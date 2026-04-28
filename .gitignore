@@ -40,3 +40,7 @@ connections.toml
 
 # Sample documents (large PDFs)
 SampleDocuments/
+
+# Local test framework and outputs
+tests/test_agent.py
+tests/results/
