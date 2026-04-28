@@ -1,0 +1,86 @@
+name: Deploy Sprocket Streamlit App to Snowflake
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'streamlit/**'
+      - '.github/workflows/deploy-streamlit.yml'
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  PYTHON_VERSION: '3.11'
+  WORKING_DIRECTORY: './streamlit'
+
+jobs:
+  deploy-streamlit:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Snowflake CLI
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install snowflake-cli-labs
+
+      - name: Create Snowflake CLI config
+        shell: bash
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+        run: |
+          mkdir -p ~/.snowflake
+          
+          # Write private key to file
+          echo "$SNOWFLAKE_PRIVATE_KEY" > ~/.snowflake/rsa_key.p8
+          chmod 0600 ~/.snowflake/rsa_key.p8
+          
+          # Create config with private key authentication
+          cat > ~/.snowflake/config.toml <<EOF
+          default_connection_name = "prod"
+          
+          [connections.prod]
+          account = "$SNOWFLAKE_ACCOUNT"
+          user = "$SNOWFLAKE_USER"
+          authenticator = "SNOWFLAKE_JWT"
+          private_key_path = "~/.snowflake/rsa_key.p8"
+          role = "$SNOWFLAKE_ROLE"
+          warehouse = "$SNOWFLAKE_WAREHOUSE"
+          database = "$SNOWFLAKE_DATABASE"
+          schema = "$SNOWFLAKE_SCHEMA"
+          EOF
+          chmod 0600 ~/.snowflake/config.toml
+
+      - name: Validate Snowflake connection
+        shell: bash
+        run: |
+          cd ${{ env.WORKING_DIRECTORY }}
+          snow connection test --connection prod
+
+      - name: Deploy Streamlit app
+        shell: bash
+        run: |
+          cd ${{ env.WORKING_DIRECTORY }}
+          snow streamlit deploy --replace --connection prod
+        
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "✅ Sprocket Streamlit app deployed successfully!"
+          echo "📍 App URL: https://app.snowflake.com/${{ secrets.SNOWFLAKE_ACCOUNT }}/#/streamlit-apps/SPROCKET.APP.SPROCKET_APP"

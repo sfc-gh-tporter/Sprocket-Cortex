@@ -1,0 +1,113 @@
+---
+# Sprocket Agent Evaluation Config: Cortex Search Basic
+# Tests: Single-tool retrieval questions from manual content
+
+evaluation:
+  agent_params:
+    agent_name: SPROCKET.APP.SPROCKET_AGENT
+    agent_type: CORTEX AGENT
+  
+  run_params:
+    label: Cortex Search Basic Evaluation
+    description: |
+      Tests the agent's ability to correctly retrieve and answer straightforward questions
+      from manual content using the search_manuals Cortex Search tool. This eval focuses
+      on single-tool-call scenarios where the answer should come directly from indexed chunks.
+  
+  source_metadata:
+    type: dataset
+    dataset_name: SPROCKET.PIPELINE.DATASET_CORTEX_SEARCH_BASIC
+
+# Built-in metrics
+metrics:
+  - correctness                # Answer correctness vs ground truth
+  - logical_consistency        # Efficient execution without redundancy
+
+# Custom metrics
+  - name: groundedness
+    score_ranges:
+      min_score: [0, 0.50]      # Fabricated or unsupported content
+      median_score: [0.51, 0.85] # Mostly grounded but some speculation
+      max_score: [0.86, 1.0]     # Fully traceable to tool outputs
+    prompt: |
+      You are evaluating the groundedness of an AI agent's response to a bicycle maintenance question.
+      
+      **User Query**: {{input}}
+      **Agent Response**: {{output}}
+      **Expected Answer**: {{ground_truth}}
+      
+      **Task**: Rate whether each statement in the agent's response is supported by information
+      from the execution trace (tool outputs, retrieved document chunks, search results).
+      
+      **Scoring Rubric**:
+      - **1.0**: Every claim in the response is directly traceable to tool outputs. No fabrication.
+      - **0.7-0.85**: Most claims are grounded, but includes minor speculation or generalization not in source.
+      - **0.5-0.69**: Contains multiple unsupported claims or inferences beyond source material.
+      - **0.0-0.49**: Significant fabrication or claims contradicting tool outputs.
+      
+      **Special Cases**:
+      - Technical specs (torque, pressure, measurements) MUST match source exactly. Wrong numbers = low score.
+      - Safety warnings must come from source, not be invented by agent.
+      - Component-specific details (make/model) must match retrieved content.
+      
+      Return a score between 0.0 and 1.0 as a JSON object: {"score": <value>}
+
+  - name: domain_accuracy
+    score_ranges:
+      min_score: [0, 0.50]      # Incorrect specs or dangerous advice
+      median_score: [0.51, 0.79] # Correct but generic
+      max_score: [0.80, 1.0]     # Accurate and component-specific
+    prompt: |
+      You are evaluating the domain accuracy of a bicycle maintenance assistant's response.
+      
+      **User Query**: {{input}}
+      **Agent Response**: {{output}}
+      **Expected Answer**: {{ground_truth}}
+      
+      **Evaluate on these criteria**:
+      1. **Component Identification**: Does the response correctly identify specific make/model?
+      2. **Technical Specs**: Are torque values, pressures, measurements accurate?
+      3. **Procedure Correctness**: Do procedures match manufacturer documentation?
+      4. **Tool Requirements**: Are required tools correctly specified?
+      5. **Safety Considerations**: Are necessary warnings included?
+      
+      **Scoring Rubric**:
+      - **1.0**: All specs/procedures are component-specific, accurate, and safe.
+      - **0.65-0.79**: Correct general guidance but missing specific details (e.g., says "adjust rebound" but doesn't say which knob/direction).
+      - **0.35-0.64**: Some inaccuracies in specs or procedures, but not dangerous.
+      - **0.0-0.34**: Contains incorrect specs, wrong procedures, or dangerous advice.
+      
+      **Critical Failures (auto 0.0)**:
+      - Wrong torque specs that could cause component failure
+      - Mixing incompatible fluids (DOT vs mineral oil)
+      - Omitting critical safety warnings (e.g., release air pressure before disassembly)
+      
+      Return a score between 0.0 and 1.0 as a JSON object: {"score": <value>}
+
+  - name: execution_efficiency
+    score_ranges:
+      min_score: [0, 0.60]      # Redundant calls or wrong tool selection
+      median_score: [0.61, 0.85] # Correct but not optimal
+      max_score: [0.86, 1.0]     # Optimal single-tool execution
+    prompt: |
+      You are evaluating how efficiently the agent executed its tools to answer the question.
+      
+      **User Query**: {{input}}
+      **Expected Behavior**: Single call to search_manuals tool
+      
+      **Review the execution trace and score based on**:
+      1. **Tool Selection**: Did agent call search_manuals first?
+      2. **Redundancy**: Were there multiple unnecessary search calls?
+      3. **Query Quality**: Was the search query well-formed and relevant?
+      
+      **Scoring Rubric**:
+      - **1.0**: Single search_manuals call with well-formed query, correct answer returned.
+      - **0.75-0.85**: Single search call but query could be more precise, or needed minor refinement.
+      - **0.50-0.74**: Multiple search calls (e.g., retry with different query) but eventually correct.
+      - **0.0-0.49**: Called wrong tools, excessive redundancy, or failed to use search at all.
+      
+      **Notes**:
+      - For this eval dataset, optimal behavior is exactly 1 search call.
+      - Calling ingestion tools or other irrelevant tools should heavily penalize score.
+      
+      Return a score between 0.0 and 1.0 as a JSON object: {"score": <value>}

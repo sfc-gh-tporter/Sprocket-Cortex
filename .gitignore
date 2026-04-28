@@ -44,3 +44,6 @@ SampleDocuments/
 # Local test framework and outputs
 tests/test_agent.py
 tests/results/
+
+# Github Actions 
+gh-actions-user/

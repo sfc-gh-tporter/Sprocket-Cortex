@@ -1,6 +1,6 @@
 {
   "models": {
-    "orchestration": "auto"
+    "orchestration": "claude-haiku-4-5"
   },
   "orchestration": {
     "budget": {

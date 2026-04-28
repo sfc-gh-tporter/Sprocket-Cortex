@@ -1,0 +1,150 @@
+---
+# Sprocket Agent Evaluation Config: Multi-Step Reasoning
+# Tests: Complex questions requiring multiple tool calls and synthesis
+
+evaluation:
+  agent_params:
+    agent_name: SPROCKET.APP.SPROCKET_AGENT
+    agent_type: CORTEX AGENT
+  
+  run_params:
+    label: Multi-Step Reasoning Evaluation
+    description: |
+      Tests the agent's ability to orchestrate multiple tool calls, synthesize information
+      from different sources, and provide comprehensive answers to complex questions.
+      Focuses on troubleshooting, comparisons, and multi-component scenarios.
+  
+  source_metadata:
+    type: dataset
+    dataset_name: SPROCKET.PIPELINE.DATASET_MULTI_STEP_REASONING
+
+# Built-in metrics
+metrics:
+  - correctness                # Answer correctness vs ground truth
+  - logical_consistency        # Efficient execution without redundancy
+
+# Custom metrics
+  - name: execution_efficiency
+    score_ranges:
+      min_score: [0, 0.60]      # Excessive redundancy or wrong tool sequence
+      median_score: [0.61, 0.80] # Correct but with some inefficiency
+      max_score: [0.81, 1.0]     # Optimal tool orchestration
+    prompt: |
+      You are evaluating how efficiently the agent orchestrated its tools to answer a complex question.
+      
+      **User Query**: {{input}}
+      **Agent Response**: {{output}}
+      **Expected Tool Sequence**: {{ground_truth}}
+      
+      **Review the execution trace and evaluate**:
+      1. **Tool Selection**: Did the agent call the right tools for the task?
+      2. **Sequence Optimization**: Was the order of tool calls logical and efficient?
+      3. **Redundancy**: Were there unnecessary duplicate or contradictory calls?
+      4. **Query Quality**: Were search queries well-formed and targeted?
+      
+      **Scoring Rubric**:
+      - **1.0**: Optimal tool sequence, no redundancy, well-formed queries.
+      - **0.75-0.80**: Correct tools in good order, minor inefficiency (e.g., one extra search).
+      - **0.55-0.74**: Correct eventual outcome but with notable redundancy or backtracking.
+      - **0.0-0.54**: Wrong tools, excessive calls, or chaotic execution.
+      
+      **Examples of inefficiency**:
+      - Searching for the same info multiple times
+      - Calling tools out of logical order (e.g., synthesizing before gathering all data)
+      - Using overly broad then overly narrow queries instead of targeted query
+      
+      Return a score between 0.0 and 1.0 as a JSON object: {"score": <value>}
+
+  - name: synthesis_quality
+    score_ranges:
+      min_score: [0, 0.50]      # Lists facts without connecting them
+      median_score: [0.51, 0.79] # Summarizes but misses key insights
+      max_score: [0.80, 1.0]     # Synthesizes with clear connections and insights
+    prompt: |
+      You are evaluating how well the agent synthesized information from multiple sources.
+      
+      **User Query**: {{input}}
+      **Agent Response**: {{output}}
+      **Expected Answer**: {{ground_truth}}
+      
+      **Evaluate synthesis quality on**:
+      1. **Integration**: Does response combine info from multiple tools coherently?
+      2. **Comparison**: For comparison questions, are key differences/similarities highlighted?
+      3. **Causality**: For troubleshooting, is cause-effect relationship clear?
+      4. **Actionability**: Is the synthesis organized in a way that guides user action?
+      
+      **Scoring Rubric**:
+      - **1.0**: Excellent synthesis - combines sources, highlights key insights, organized for action.
+      - **0.65-0.79**: Good synthesis - covers the points but could be more insightful or organized.
+      - **0.40-0.64**: Weak synthesis - mostly lists facts from tools without connecting them.
+      - **0.0-0.39**: No synthesis - just dumps tool outputs or fails to integrate information.
+      
+      **Question-specific criteria**:
+      - **Comparisons**: Must explicitly state similarities and differences, not just describe each separately.
+      - **Troubleshooting**: Must connect symptoms → diagnosis → solution causally.
+      - **Procedures**: Must sequence steps logically, not just list tasks.
+      
+      Return a score between 0.0 and 1.0 as a JSON object: {"score": <value>}
+
+  - name: completeness
+    score_ranges:
+      min_score: [0, 0.60]      # Missing critical information
+      median_score: [0.61, 0.85] # Covers main points, minor gaps
+      max_score: [0.86, 1.0]     # Comprehensive and thorough
+    prompt: |
+      You are evaluating the completeness of the agent's response to a multi-faceted question.
+      
+      **User Query**: {{input}}
+      **Agent Response**: {{output}}
+      **Expected Answer**: {{ground_truth}}
+      
+      **Evaluate completeness on**:
+      1. **Coverage**: Did the response address all parts of the question?
+      2. **Depth**: For each part, was sufficient detail provided?
+      3. **Context**: Were necessary caveats, prerequisites, or follow-ups mentioned?
+      
+      **Scoring Rubric**:
+      - **1.0**: Comprehensive - all question parts addressed with appropriate detail and context.
+      - **0.70-0.85**: Mostly complete - addresses main points but missing some detail or context.
+      - **0.50-0.69**: Partial - answers part of the question but omits significant aspects.
+      - **0.0-0.49**: Incomplete - misses most of what was asked or provides superficial coverage.
+      
+      **Common completeness gaps**:
+      - Troubleshooting without mentioning diagnostic steps
+      - Procedures without listing required tools
+      - Comparisons covering only one aspect (e.g., just differences, not similarities)
+      - Solutions without mentioning prerequisites or testing requirements
+      
+      Return a score between 0.0 and 1.0 as a JSON object: {"score": <value>}
+
+  - name: domain_accuracy
+    score_ranges:
+      min_score: [0, 0.50]      # Incorrect or dangerous guidance
+      median_score: [0.51, 0.79] # Correct but generic
+      max_score: [0.80, 1.0]     # Accurate and specific
+    prompt: |
+      You are evaluating the technical accuracy of the agent's response for bicycle maintenance.
+      
+      **User Query**: {{input}}
+      **Agent Response**: {{output}}
+      **Expected Answer**: {{ground_truth}}
+      
+      **Evaluate technical accuracy on**:
+      1. **Specifications**: Torque values, pressures, measurements
+      2. **Procedures**: Step sequences, methods, techniques
+      3. **Diagnosis**: Root cause identification and troubleshooting logic
+      4. **Component Knowledge**: Make/model-specific details
+      
+      **Scoring Rubric**:
+      - **1.0**: Technically accurate across all dimensions, component-specific where appropriate.
+      - **0.65-0.79**: Correct general principles but missing specific details.
+      - **0.40-0.64**: Some technical errors but not dangerous.
+      - **0.0-0.39**: Significant errors or dangerous advice.
+      
+      **Critical failures (auto 0.0)**:
+      - Wrong torque specs that cause component failure
+      - Fluid compatibility errors (DOT vs mineral oil)
+      - Procedures that skip critical safety steps
+      - Diagnosis that could lead to component damage
+      
+      Return a score between 0.0 and 1.0 as a JSON object: {"score": <value>}
