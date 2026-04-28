@@ -110,9 +110,9 @@ CREATE TABLE IF NOT EXISTS SPROCKET.SEARCH.DOCUMENT_CHUNKS (
     model_year              INT,
     component_category      VARCHAR,
     document_type           VARCHAR,
-    component_catalog_id    VARCHAR,
-    component_make          VARCHAR,
-    component_model         VARCHAR,
+    component_catalog_ids   ARRAY,
+    component_makes         ARRAY,
+    component_models        ARRAY,
     PRIMARY KEY (chunk_id)
 );
 
