@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Node / React
+node_modules/
+.next/
+.cache/
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.pem
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Snowflake
+.snowflake/
+connections.toml
+
+# Docker
+*.tar
+
+# Logs
+*.log
+
+# Sample documents (large PDFs)
+SampleDocuments/
