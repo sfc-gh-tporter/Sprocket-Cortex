@@ -7,7 +7,8 @@ USE WAREHOUSE SPROCKET_WH;
 
 CREATE OR REPLACE CORTEX SEARCH SERVICE SPROCKET.SEARCH.MANUAL_SEARCH
 ON content
-ATTRIBUTES section, page_number, chunk_type, source_file, bike_model, model_year, component_category, document_type
+ATTRIBUTES section, page_number, chunk_type, source_file, bike_model, model_year,
+           component_category, document_type, component_catalog_id, component_make, component_model
 WAREHOUSE = SPROCKET_WH
 TARGET_LAG = '1 hour'
 EMBEDDING_MODEL = 'snowflake-arctic-embed-l-v2.0-8k'
@@ -23,6 +24,9 @@ AS (
         bike_model,
         model_year,
         component_category,
-        document_type
+        document_type,
+        component_catalog_id,
+        component_make,
+        component_model
     FROM SPROCKET.SEARCH.DOCUMENT_CHUNKS
 );

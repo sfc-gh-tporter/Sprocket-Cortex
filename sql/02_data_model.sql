@@ -57,14 +57,41 @@ CREATE TABLE IF NOT EXISTS SPROCKET.CURATED.BIKES (
     PRIMARY KEY (bike_id)
 );
 
-CREATE TABLE IF NOT EXISTS SPROCKET.CURATED.COMPONENTS (
-    component_id    VARCHAR DEFAULT UUID_STRING(),
-    bike_id         VARCHAR,
-    category        VARCHAR NOT NULL,
-    component       VARCHAR NOT NULL,
-    part            VARCHAR,
-    specs           VARIANT,
-    PRIMARY KEY (component_id)
+CREATE TABLE IF NOT EXISTS SPROCKET.CURATED.COMPONENT_CATALOG (
+    catalog_id          VARCHAR DEFAULT UUID_STRING(),
+    make                VARCHAR NOT NULL,
+    model               VARCHAR NOT NULL,
+    model_year          INT,
+    component_type      VARCHAR NOT NULL,
+    component_category  VARCHAR NOT NULL,
+    default_specs       VARIANT DEFAULT OBJECT_CONSTRUCT(),
+    notes               VARCHAR,
+    created_at          TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    PRIMARY KEY (catalog_id)
+);
+
+CREATE TABLE IF NOT EXISTS SPROCKET.CURATED.BIKE_COMPONENT_INSTANCES (
+    instance_id             VARCHAR DEFAULT UUID_STRING(),
+    bike_id                 VARCHAR NOT NULL,
+    catalog_id              VARCHAR NOT NULL,
+    installed_date          DATE,
+    serial_number           VARCHAR,
+    custom_notes            VARCHAR,
+    current_service_hours   FLOAT,
+    is_stock                BOOLEAN DEFAULT TRUE,
+    created_at              TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    PRIMARY KEY (instance_id)
+);
+
+CREATE TABLE IF NOT EXISTS SPROCKET.CURATED.COMPONENT_DOCUMENT_LINK (
+    link_id         VARCHAR DEFAULT UUID_STRING(),
+    catalog_id      VARCHAR NOT NULL,
+    document_id     VARCHAR NOT NULL,
+    link_type       VARCHAR DEFAULT 'manual',
+    notes           VARCHAR,
+    created_at      TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    PRIMARY KEY (link_id),
+    UNIQUE (catalog_id, document_id)
 );
 
 ----------------------------------------------------------------------
@@ -72,17 +99,20 @@ CREATE TABLE IF NOT EXISTS SPROCKET.CURATED.COMPONENTS (
 ----------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS SPROCKET.SEARCH.DOCUMENT_CHUNKS (
-    chunk_id            VARCHAR DEFAULT UUID_STRING(),
-    document_id         VARCHAR NOT NULL,
-    content             VARCHAR(16777216) NOT NULL,
-    section             VARCHAR,
-    page_number         INT,
-    chunk_type          VARCHAR DEFAULT 'text',
-    source_file         VARCHAR,
-    bike_model          VARCHAR,
-    model_year          INT,
-    component_category  VARCHAR,
-    document_type       VARCHAR,
+    chunk_id                VARCHAR DEFAULT UUID_STRING(),
+    document_id             VARCHAR NOT NULL,
+    content                 VARCHAR(16777216) NOT NULL,
+    section                 VARCHAR,
+    page_number             INT,
+    chunk_type              VARCHAR DEFAULT 'text',
+    source_file             VARCHAR,
+    bike_model              VARCHAR,
+    model_year              INT,
+    component_category      VARCHAR,
+    document_type           VARCHAR,
+    component_catalog_id    VARCHAR,
+    component_make          VARCHAR,
+    component_model         VARCHAR,
     PRIMARY KEY (chunk_id)
 );
 
