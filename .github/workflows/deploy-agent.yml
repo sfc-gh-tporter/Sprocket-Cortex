@@ -1,0 +1,83 @@
+name: Deploy Sprocket Agent to Snowflake
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'agents/**'
+      - 'scripts/deploy_agent.py'
+      - '.github/workflows/deploy-agent.yml'
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  deploy-agent:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install snowflake-snowpark-python pyyaml snowflake-cli-labs
+
+      - name: Create Snowflake CLI config
+        shell: bash
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+        run: |
+          mkdir -p ~/.snowflake
+          
+          echo "$SNOWFLAKE_PRIVATE_KEY" > ~/.snowflake/rsa_key.p8
+          chmod 0600 ~/.snowflake/rsa_key.p8
+          
+          cat > ~/.snowflake/config.toml <<EOF
+          default_connection_name = "prod"
+          
+          [connections.prod]
+          account = "$SNOWFLAKE_ACCOUNT"
+          user = "$SNOWFLAKE_USER"
+          authenticator = "SNOWFLAKE_JWT"
+          private_key_path = "~/.snowflake/rsa_key.p8"
+          role = "$SNOWFLAKE_ROLE"
+          warehouse = "$SNOWFLAKE_WAREHOUSE"
+          database = "$SNOWFLAKE_DATABASE"
+          schema = "$SNOWFLAKE_SCHEMA"
+          EOF
+          chmod 0600 ~/.snowflake/config.toml
+
+      - name: Validate Snowflake connection
+        shell: bash
+        run: snow connection test --connection prod
+
+      - name: Deploy Sprocket Agent
+        shell: bash
+        env:
+          SNOWFLAKE_CONNECTION_NAME: prod
+        run: |
+          python scripts/deploy_agent.py agents/sprocket_agent.yaml
+        
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "✅ Sprocket Agent deployed successfully!"
+          echo "📍 Agent: ${{ secrets.SNOWFLAKE_DATABASE }}.${{ secrets.SNOWFLAKE_SCHEMA }}.SPROCKET_AGENT"
+          echo "🔗 Access in Snowsight: Data → Cortex Agents"
