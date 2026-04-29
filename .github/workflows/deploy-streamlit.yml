@@ -15,7 +15,7 @@ env:
 
 jobs:
   deploy-streamlit:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted  # Use your self-hosted runner with whitelisted IP
     environment: production
     
     steps:
