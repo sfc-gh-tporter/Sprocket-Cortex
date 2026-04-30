@@ -1,0 +1,110 @@
+name: Deploy Sprocket SQL Scripts to Snowflake
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'sql/**'
+      - '.github/workflows/deploy-sql.yml'
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  deploy-sql:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Snowflake CLI
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install snowflake-cli-labs
+
+      - name: Create Snowflake CLI config
+        shell: bash
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+        run: |
+          mkdir -p ~/.snowflake
+          
+          echo "$SNOWFLAKE_PRIVATE_KEY" > ~/.snowflake/rsa_key.p8
+          chmod 0600 ~/.snowflake/rsa_key.p8
+          
+          cat > ~/.snowflake/config.toml <<EOF
+          default_connection_name = "prod"
+          
+          [connections.prod]
+          account = "$SNOWFLAKE_ACCOUNT"
+          user = "$SNOWFLAKE_USER"
+          authenticator = "SNOWFLAKE_JWT"
+          private_key_path = "$HOME/.snowflake/rsa_key.p8"
+          role = "$SNOWFLAKE_ROLE"
+          warehouse = "$SNOWFLAKE_WAREHOUSE"
+          database = "$SNOWFLAKE_DATABASE"
+          schema = "$SNOWFLAKE_SCHEMA"
+          EOF
+          chmod 0600 ~/.snowflake/config.toml
+
+      - name: Validate Snowflake connection
+        shell: bash
+        run: snow connection test --connection prod
+
+      - name: Deploy SQL scripts
+        shell: bash
+        run: |
+          echo "Deploying SQL scripts in order..."
+          
+          # Deploy foundation scripts (if changed)
+          for script in sql/01_foundation.sql sql/02_data_model.sql sql/03_pipeline.sql; do
+            if [ -f "$script" ]; then
+              echo "Executing $script..."
+              snow sql -f "$script" --connection prod
+            fi
+          done
+          
+          # Deploy ingestion procedures (if changed)
+          if [ -f "sql/04_ingestion_procedures.sql" ]; then
+            echo "Executing sql/04_ingestion_procedures.sql..."
+            snow sql -f sql/04_ingestion_procedures.sql --connection prod
+          fi
+          
+          # Deploy remaining scripts
+          for script in sql/05_cortex_search.sql sql/06_seed_data.sql sql/07_session_context.sql; do
+            if [ -f "$script" ]; then
+              echo "Executing $script..."
+              snow sql -f "$script" --connection prod
+            fi
+          done
+          
+          # Deploy ingestion worker task (if changed)
+          if [ -f "sql/08_ingestion_worker_task.sql" ]; then
+            echo "Executing sql/08_ingestion_worker_task.sql..."
+            snow sql -f sql/08_ingestion_worker_task.sql --connection prod
+          fi
+        
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "✅ SQL scripts deployed successfully!"
+          echo "📍 Database: ${{ secrets.SNOWFLAKE_DATABASE }}"
+          echo "📍 Schemas: RAW, CURATED, SEARCH, APP, PIPELINE, ANALYTICS"
+          echo "🔧 Deployed: Procedures, Tasks, Tables, Views"
+          echo "🔗 Access in Snowsight: Data → Databases → SPROCKET"
