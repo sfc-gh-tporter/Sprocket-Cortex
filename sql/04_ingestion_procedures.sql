@@ -4,7 +4,7 @@
 -- Creates 7 stored procedures for human-in-the-loop document ingestion
 -- with 4 checkpoints: Preview → Classify → Link → Finalize → Async Processing
 
-USE ROLE SYSADMIN;
+USE ROLE SPROCKET_DEPLOYER;
 USE WAREHOUSE SPROCKET_WH;
 
 --------------------------------------------------------------------

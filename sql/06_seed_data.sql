@@ -2,7 +2,7 @@
 -- 06_seed_data.sql  –  Reference Data Seeding
 --------------------------------------------------------------------
 
-USE ROLE SYSADMIN;
+USE ROLE SPROCKET_DEPLOYER;
 USE WAREHOUSE SPROCKET_WH;
 
 --------------------------------------------------------------------

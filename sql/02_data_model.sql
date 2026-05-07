@@ -2,7 +2,7 @@
 -- 02_data_model.sql  –  Sprocket Phase 1 Data Model
 --------------------------------------------------------------------
 
-USE ROLE SYSADMIN;
+USE ROLE SPROCKET_DEPLOYER;
 USE WAREHOUSE SPROCKET_WH;
 
 ----------------------------------------------------------------------

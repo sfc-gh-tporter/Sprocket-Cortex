@@ -2,10 +2,7 @@
 -- 01_foundation.sql  –  Sprocket Phase 1 Foundation Infrastructure
 --------------------------------------------------------------------
 
-USE ROLE SYSADMIN;
-
--- Database
-CREATE DATABASE IF NOT EXISTS SPROCKET;
+USE ROLE SPROCKET_DEPLOYER;
 
 -- Schemas
 CREATE SCHEMA IF NOT EXISTS RAW;

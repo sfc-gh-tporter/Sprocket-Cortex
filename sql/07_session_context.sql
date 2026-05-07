@@ -16,7 +16,7 @@
 -- the agent itself.
 --------------------------------------------------------------------
 
-USE ROLE SYSADMIN;
+USE ROLE SPROCKET_DEPLOYER;
 USE WAREHOUSE SPROCKET_WH;
 
 --------------------------------------------------------------------

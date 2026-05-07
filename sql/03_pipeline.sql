@@ -2,7 +2,7 @@
 -- 03_pipeline.sql  –  Sprocket Phase 1 Document Processing Pipeline
 --------------------------------------------------------------------
 
-USE ROLE SYSADMIN;
+USE ROLE SPROCKET_DEPLOYER;
 USE WAREHOUSE SPROCKET_WH;
 
 --------------------------------------------------------------------

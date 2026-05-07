@@ -2,7 +2,7 @@
 -- 05_cortex_search.sql  –  Cortex Search Service
 --------------------------------------------------------------------
 
-USE ROLE SYSADMIN;
+USE ROLE SPROCKET_DEPLOYER;
 USE WAREHOUSE SPROCKET_WH;
 
 CREATE OR REPLACE CORTEX SEARCH SERVICE SEARCH.MANUAL_SEARCH

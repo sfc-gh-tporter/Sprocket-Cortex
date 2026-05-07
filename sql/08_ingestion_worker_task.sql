@@ -4,7 +4,7 @@
 -- Creates a scheduled task that processes the ingestion queue every 1 minute
 -- Picks up documents from INGEST_QUEUE and calls INGEST_PROCESS_ASYNC
 
-USE ROLE SYSADMIN;
+USE ROLE SPROCKET_DEPLOYER;
 USE WAREHOUSE SPROCKET_WH;
 
 --------------------------------------------------------------------
