@@ -4,7 +4,7 @@
 -- Creates 7 stored procedures for human-in-the-loop document ingestion
 -- with 4 checkpoints: Preview → Classify → Link → Finalize → Async Processing
 
-USE ROLE SYSADMIN;
+USE ROLE SPROCKET_DEPLOYER;
 USE WAREHOUSE SPROCKET_WH;
 
 --------------------------------------------------------------------
@@ -13,7 +13,7 @@ USE WAREHOUSE SPROCKET_WH;
 -- Registers document, parses first 3 pages, extracts title guess
 -- Returns preview data for user confirmation
 
-CREATE OR REPLACE PROCEDURE SPROCKET.PIPELINE.INGEST_START(p_file_name VARCHAR)
+CREATE OR REPLACE PROCEDURE PIPELINE.INGEST_START(p_file_name VARCHAR)
 RETURNS VARIANT
 LANGUAGE SQL
 EXECUTE AS OWNER
@@ -30,7 +30,7 @@ DECLARE
 BEGIN
     -- Check if already registered (idempotency)
     SELECT document_id INTO :v_existing_id
-    FROM SPROCKET.RAW.DOCUMENT_REGISTRY
+    FROM RAW.DOCUMENT_REGISTRY
     WHERE source_file = :p_file_name
     LIMIT 1;
 
@@ -46,40 +46,40 @@ BEGIN
                 ''page_count'', page_count
             )
         INTO :v_result
-        FROM SPROCKET.RAW.DOCUMENT_REGISTRY
+        FROM RAW.DOCUMENT_REGISTRY
         WHERE document_id = :v_existing_id;
         RETURN v_result;
     END IF;
 
     -- Register new document
-    INSERT INTO SPROCKET.RAW.DOCUMENT_REGISTRY (source_file, file_path, status, status_updated_at, progress_pct)
+    INSERT INTO RAW.DOCUMENT_REGISTRY (source_file, file_path, status, status_updated_at, progress_pct)
     VALUES (
         :p_file_name,
-        ''@SPROCKET.RAW.MANUALS_STAGE/'' || :p_file_name,
+        ''@RAW.MANUALS_STAGE/'' || :p_file_name,
         ''UPLOADED'',
         CURRENT_TIMESTAMP(),
         0
     );
 
     SELECT document_id INTO :v_document_id
-    FROM SPROCKET.RAW.DOCUMENT_REGISTRY WHERE source_file = :p_file_name LIMIT 1;
+    FROM RAW.DOCUMENT_REGISTRY WHERE source_file = :p_file_name LIMIT 1;
 
     -- Parse first pages only (cheap preview)
-    CREATE OR REPLACE TEMPORARY TABLE SPROCKET.RAW._TEMP_PREVIEW AS
+    CREATE OR REPLACE TEMPORARY TABLE RAW._TEMP_PREVIEW AS
     SELECT SNOWFLAKE.CORTEX.PARSE_DOCUMENT(
-        @SPROCKET.RAW.MANUALS_STAGE,
+        @RAW.MANUALS_STAGE,
         :p_file_name,
         {''mode'': ''LAYOUT'', ''page_split'': TRUE}
     ) AS result;
 
     -- Insert first 3 pages into DOCUMENT_PAGES for the classify step to use
-    INSERT INTO SPROCKET.RAW.DOCUMENT_PAGES (document_id, page_number, content, images)
+    INSERT INTO RAW.DOCUMENT_PAGES (document_id, page_number, content, images)
     SELECT 
         :v_document_id,
         p.value:index::INT + 1,
         p.value:content::VARCHAR,
         NULL
-    FROM SPROCKET.RAW._TEMP_PREVIEW, LATERAL FLATTEN(input => result:pages) p
+    FROM RAW._TEMP_PREVIEW, LATERAL FLATTEN(input => result:pages) p
     WHERE p.value:index::INT < 3;
 
     -- Compute preview values
@@ -87,7 +87,7 @@ BEGIN
         ARRAY_SIZE(result:pages),
         LEFT(result:pages[0]:content::VARCHAR, 400)
     INTO :v_page_count, :v_preview
-    FROM SPROCKET.RAW._TEMP_PREVIEW;
+    FROM RAW._TEMP_PREVIEW;
 
     -- Extract a title guess (first markdown heading in first page)
     SELECT COALESCE(
@@ -95,10 +95,10 @@ BEGIN
         LEFT(content, 100)
     )
     INTO :v_title
-    FROM SPROCKET.RAW.DOCUMENT_PAGES
+    FROM RAW.DOCUMENT_PAGES
     WHERE document_id = :v_document_id AND page_number = 1;
 
-    UPDATE SPROCKET.RAW.DOCUMENT_REGISTRY
+    UPDATE RAW.DOCUMENT_REGISTRY
     SET page_count = :v_page_count,
         status = ''PARSED'',
         status_updated_at = CURRENT_TIMESTAMP(),
@@ -106,7 +106,7 @@ BEGIN
         classification = OBJECT_CONSTRUCT(''title'', :v_title)
     WHERE document_id = :v_document_id;
 
-    DROP TABLE IF EXISTS SPROCKET.RAW._TEMP_PREVIEW;
+    DROP TABLE IF EXISTS RAW._TEMP_PREVIEW;
 
     RETURN OBJECT_CONSTRUCT(
         ''document_id'', :v_document_id,
@@ -126,7 +126,7 @@ END;
 -- Classifies document using Claude-4-Sonnet
 -- Returns classification + fuzzy-matched existing catalog entries
 
-CREATE OR REPLACE PROCEDURE SPROCKET.PIPELINE.INGEST_CLASSIFY(p_document_id VARCHAR)
+CREATE OR REPLACE PROCEDURE PIPELINE.INGEST_CLASSIFY(p_document_id VARCHAR)
 RETURNS VARIANT
 LANGUAGE SQL
 EXECUTE AS OWNER
@@ -141,7 +141,7 @@ DECLARE
 BEGIN
     SELECT LISTAGG(LEFT(content, 3000), ''\\n---PAGE BREAK---\\n'') WITHIN GROUP (ORDER BY page_number)
     INTO :v_combined_text
-    FROM SPROCKET.RAW.DOCUMENT_PAGES
+    FROM RAW.DOCUMENT_PAGES
     WHERE document_id = :p_document_id AND page_number <= 3;
 
     SELECT AI_COMPLETE(
@@ -168,7 +168,7 @@ PAGES:
     INTO :v_classification;
 
     IF (v_classification IS NULL) THEN
-        UPDATE SPROCKET.RAW.DOCUMENT_REGISTRY
+        UPDATE RAW.DOCUMENT_REGISTRY
         SET status = ''FAILED'', status_updated_at = CURRENT_TIMESTAMP(),
             error_message = ''Classification JSON parse failed: '' || LEFT(:v_raw_response, 500)
         WHERE document_id = :p_document_id;
@@ -189,13 +189,13 @@ PAGES:
         CASE WHEN UPPER(model) = UPPER(:v_classification:model::VARCHAR) THEN 0 ELSE 1 END
     )
     INTO :v_matches
-    FROM SPROCKET.CURATED.COMPONENT_CATALOG
+    FROM CURATED.COMPONENT_CATALOG
     WHERE UPPER(make) = UPPER(:v_classification:make::VARCHAR)
        OR UPPER(model) LIKE ''%'' || UPPER(:v_classification:model::VARCHAR) || ''%''
        OR UPPER(:v_classification:model::VARCHAR) LIKE ''%'' || UPPER(model) || ''%'';
 
     SELECT catalog_id INTO :v_proposed_catalog_id
-    FROM SPROCKET.CURATED.COMPONENT_CATALOG
+    FROM CURATED.COMPONENT_CATALOG
     WHERE UPPER(make) = UPPER(:v_classification:make::VARCHAR)
       AND (UPPER(model) = UPPER(:v_classification:model::VARCHAR)
            OR UPPER(model) LIKE ''%'' || UPPER(:v_classification:model::VARCHAR) || ''%''
@@ -203,7 +203,7 @@ PAGES:
     ORDER BY LENGTH(model) ASC
     LIMIT 1;
 
-    UPDATE SPROCKET.RAW.DOCUMENT_REGISTRY
+    UPDATE RAW.DOCUMENT_REGISTRY
     SET status = ''CLASSIFIED'',
         status_updated_at = CURRENT_TIMESTAMP(),
         progress_pct = 25,
@@ -230,7 +230,7 @@ END;
 --   p_bike_id: NULL skips bike instance creation
 --   p_link_type: NULL uses classification's link_type
 
-CREATE OR REPLACE PROCEDURE SPROCKET.PIPELINE.INGEST_LINK(
+CREATE OR REPLACE PROCEDURE PIPELINE.INGEST_LINK(
     p_document_id VARCHAR,
     p_catalog_id VARCHAR,
     p_bike_id VARCHAR,
@@ -249,7 +249,7 @@ DECLARE
     v_link_id VARCHAR;
 BEGIN
     SELECT classification INTO :v_classification
-    FROM SPROCKET.RAW.DOCUMENT_REGISTRY
+    FROM RAW.DOCUMENT_REGISTRY
     WHERE document_id = :p_document_id;
 
     IF (v_classification IS NULL) THEN
@@ -262,7 +262,7 @@ BEGIN
     ELSE
         -- Create new catalog entry from classification
         v_catalog_id := UUID_STRING();
-        INSERT INTO SPROCKET.CURATED.COMPONENT_CATALOG 
+        INSERT INTO CURATED.COMPONENT_CATALOG 
             (catalog_id, make, model, model_year, component_type, component_category, notes)
         SELECT 
             :v_catalog_id,
@@ -280,13 +280,13 @@ BEGIN
     -- Create bike instance if bike_id given and instance doesn''t exist
     IF (p_bike_id IS NOT NULL) THEN
         SELECT instance_id INTO :v_instance_id
-        FROM SPROCKET.CURATED.BIKE_COMPONENT_INSTANCES
+        FROM CURATED.BIKE_COMPONENT_INSTANCES
         WHERE bike_id = :p_bike_id AND catalog_id = :v_catalog_id
         LIMIT 1;
 
         IF (v_instance_id IS NULL) THEN
             v_instance_id := UUID_STRING();
-            INSERT INTO SPROCKET.CURATED.BIKE_COMPONENT_INSTANCES 
+            INSERT INTO CURATED.BIKE_COMPONENT_INSTANCES 
                 (instance_id, bike_id, catalog_id, is_stock, custom_notes)
             VALUES (
                 :v_instance_id, :p_bike_id, :v_catalog_id, FALSE,
@@ -297,17 +297,17 @@ BEGIN
 
     -- Create document link if not exists
     SELECT link_id INTO :v_link_id
-    FROM SPROCKET.CURATED.COMPONENT_DOCUMENT_LINK
+    FROM CURATED.COMPONENT_DOCUMENT_LINK
     WHERE catalog_id = :v_catalog_id AND document_id = :p_document_id
     LIMIT 1;
 
     IF (v_link_id IS NULL) THEN
         v_link_id := UUID_STRING();
-        INSERT INTO SPROCKET.CURATED.COMPONENT_DOCUMENT_LINK (link_id, catalog_id, document_id, link_type)
+        INSERT INTO CURATED.COMPONENT_DOCUMENT_LINK (link_id, catalog_id, document_id, link_type)
         VALUES (:v_link_id, :v_catalog_id, :p_document_id, :v_link_type);
     END IF;
 
-    UPDATE SPROCKET.RAW.DOCUMENT_REGISTRY
+    UPDATE RAW.DOCUMENT_REGISTRY
     SET status = ''LINKED'',
         status_updated_at = CURRENT_TIMESTAMP(),
         progress_pct = 40,
@@ -331,7 +331,7 @@ END;
 -- Validates status is LINKED or CLASSIFIED, enqueues for background processing
 -- Returns estimated processing time
 
-CREATE OR REPLACE PROCEDURE SPROCKET.PIPELINE.INGEST_FINALIZE(p_document_id VARCHAR)
+CREATE OR REPLACE PROCEDURE PIPELINE.INGEST_FINALIZE(p_document_id VARCHAR)
 RETURNS VARIANT
 LANGUAGE SQL
 EXECUTE AS OWNER
@@ -342,7 +342,7 @@ DECLARE
     v_page_count INT;
 BEGIN
     SELECT status, page_count INTO :v_current_status, :v_page_count
-    FROM SPROCKET.RAW.DOCUMENT_REGISTRY
+    FROM RAW.DOCUMENT_REGISTRY
     WHERE document_id = :p_document_id;
 
     IF (v_current_status NOT IN (''LINKED'', ''CLASSIFIED'')) THEN
@@ -350,9 +350,9 @@ BEGIN
     END IF;
 
     -- Enqueue for async processing
-    INSERT INTO SPROCKET.PIPELINE.INGEST_QUEUE (document_id) VALUES (:p_document_id);
+    INSERT INTO PIPELINE.INGEST_QUEUE (document_id) VALUES (:p_document_id);
 
-    UPDATE SPROCKET.RAW.DOCUMENT_REGISTRY
+    UPDATE RAW.DOCUMENT_REGISTRY
     SET status = ''INDEXING'', progress_pct = 45, status_updated_at = CURRENT_TIMESTAMP()
     WHERE document_id = :p_document_id;
 
@@ -376,7 +376,7 @@ END;
 -- 5. Inserts text + image chunks into DOCUMENT_CHUNKS
 -- 6. Updates progress_pct at checkpoints (50 → 60 → 70 → 75 → 90 → 100)
 
-CREATE OR REPLACE PROCEDURE SPROCKET.PIPELINE.INGEST_PROCESS_ASYNC(p_document_id VARCHAR)
+CREATE OR REPLACE PROCEDURE PIPELINE.INGEST_PROCESS_ASYNC(p_document_id VARCHAR)
 RETURNS VARIANT
 LANGUAGE SQL
 EXECUTE AS OWNER
@@ -400,7 +400,7 @@ DECLARE
     v_image_chunks INT;
 BEGIN
     -- Set event table for this session only
-    ALTER SESSION SET EVENT_TABLE = SPROCKET.PIPELINE.INGESTION_EVENTS;
+    ALTER SESSION SET EVENT_TABLE = PIPELINE.INGESTION_EVENTS;
     
     v_start_time := CURRENT_TIMESTAMP();
     
@@ -412,7 +412,7 @@ BEGIN
         ''message'', ''Beginning async document processing''
     )::VARCHAR);
 
-    UPDATE SPROCKET.RAW.DOCUMENT_REGISTRY
+    UPDATE RAW.DOCUMENT_REGISTRY
     SET status = ''INDEXING'', status_updated_at = CURRENT_TIMESTAMP(), progress_pct = 50
     WHERE document_id = :p_document_id;
 
@@ -423,9 +423,9 @@ BEGIN
         c.make, c.model, c.component_category,
         dr.classification:document_type::VARCHAR
     INTO :v_source_file, :v_catalog_id, :v_make, :v_model, :v_component_category, :v_document_type
-    FROM SPROCKET.RAW.DOCUMENT_REGISTRY dr
-    LEFT JOIN SPROCKET.CURATED.COMPONENT_DOCUMENT_LINK l ON dr.document_id = l.document_id
-    LEFT JOIN SPROCKET.CURATED.COMPONENT_CATALOG c ON l.catalog_id = c.catalog_id
+    FROM RAW.DOCUMENT_REGISTRY dr
+    LEFT JOIN CURATED.COMPONENT_DOCUMENT_LINK l ON dr.document_id = l.document_id
+    LEFT JOIN CURATED.COMPONENT_CATALOG c ON l.catalog_id = c.catalog_id
     WHERE dr.document_id = :p_document_id
     LIMIT 1;
 
@@ -434,10 +434,10 @@ BEGIN
 
     -- Parse ALL pages (skipping already-parsed preview pages)
     v_step_start := CURRENT_TIMESTAMP();
-    INSERT INTO SPROCKET.RAW.DOCUMENT_PAGES (document_id, page_number, content, images)
+    INSERT INTO RAW.DOCUMENT_PAGES (document_id, page_number, content, images)
     WITH parsed AS (
         SELECT SNOWFLAKE.CORTEX.PARSE_DOCUMENT(
-            @SPROCKET.RAW.MANUALS_STAGE,
+            @RAW.MANUALS_STAGE,
             :v_source_file,
             {''mode'': ''LAYOUT'', ''page_split'': TRUE, ''extract_images'': TRUE}
         ) AS result
@@ -449,10 +449,10 @@ BEGIN
         p.value:images
     FROM parsed, LATERAL FLATTEN(input => result:pages) p
     WHERE p.value:index::INT + 1 NOT IN (
-        SELECT page_number FROM SPROCKET.RAW.DOCUMENT_PAGES WHERE document_id = :p_document_id
+        SELECT page_number FROM RAW.DOCUMENT_PAGES WHERE document_id = :p_document_id
     );
     
-    SELECT COUNT(*) INTO :v_pages_parsed FROM SPROCKET.RAW.DOCUMENT_PAGES WHERE document_id = :p_document_id;
+    SELECT COUNT(*) INTO :v_pages_parsed FROM RAW.DOCUMENT_PAGES WHERE document_id = :p_document_id;
     
     SYSTEM$LOG_INFO(OBJECT_CONSTRUCT(
         ''procedure'', ''INGEST_PROCESS_ASYNC'',
@@ -463,16 +463,16 @@ BEGIN
         ''source_file'', :v_source_file
     )::VARCHAR);
 
-    UPDATE SPROCKET.RAW.DOCUMENT_REGISTRY SET progress_pct = 60, status_updated_at = CURRENT_TIMESTAMP()
+    UPDATE RAW.DOCUMENT_REGISTRY SET progress_pct = 60, status_updated_at = CURRENT_TIMESTAMP()
     WHERE document_id = :p_document_id;
 
     -- Update images on the preview pages (we parsed them without extract_images earlier)
-    UPDATE SPROCKET.RAW.DOCUMENT_PAGES dp
+    UPDATE RAW.DOCUMENT_PAGES dp
     SET images = src.images
     FROM (
         WITH parsed AS (
             SELECT SNOWFLAKE.CORTEX.PARSE_DOCUMENT(
-                @SPROCKET.RAW.MANUALS_STAGE,
+                @RAW.MANUALS_STAGE,
                 :v_source_file,
                 {''mode'': ''LAYOUT'', ''page_split'': TRUE, ''extract_images'': TRUE}
             ) AS result
@@ -486,14 +486,14 @@ BEGIN
 
     -- Extract images
     v_step_start := CURRENT_TIMESTAMP();
-    INSERT INTO SPROCKET.RAW.DOCUMENT_IMAGES (document_id, page_number, image_index, image_base64, image_type)
+    INSERT INTO RAW.DOCUMENT_IMAGES (document_id, page_number, image_index, image_base64, image_type)
     SELECT 
         document_id, page_number, img.index, img.value:image_base64::VARCHAR, img.value:id::VARCHAR
-    FROM SPROCKET.RAW.DOCUMENT_PAGES,
+    FROM RAW.DOCUMENT_PAGES,
          LATERAL FLATTEN(input => images) img
     WHERE document_id = :p_document_id AND ARRAY_SIZE(images) > 0;
     
-    SELECT COUNT(*) INTO :v_images_extracted FROM SPROCKET.RAW.DOCUMENT_IMAGES WHERE document_id = :p_document_id;
+    SELECT COUNT(*) INTO :v_images_extracted FROM RAW.DOCUMENT_IMAGES WHERE document_id = :p_document_id;
     
     SYSTEM$LOG_INFO(OBJECT_CONSTRUCT(
         ''procedure'', ''INGEST_PROCESS_ASYNC'',
@@ -503,22 +503,22 @@ BEGIN
         ''images_extracted'', :v_images_extracted
     )::VARCHAR);
 
-    UPDATE SPROCKET.RAW.DOCUMENT_REGISTRY SET progress_pct = 70, status_updated_at = CURRENT_TIMESTAMP()
+    UPDATE RAW.DOCUMENT_REGISTRY SET progress_pct = 70, status_updated_at = CURRENT_TIMESTAMP()
     WHERE document_id = :p_document_id;
 
     -- Save images to stage and generate descriptions
     v_step_start := CURRENT_TIMESTAMP();
-    CALL SPROCKET.PIPELINE.SAVE_DOC_IMAGES_TO_STAGE(:p_document_id, :v_prefix);
-    ALTER STAGE SPROCKET.RAW.IMAGES_STAGE REFRESH;
+    CALL PIPELINE.SAVE_DOC_IMAGES_TO_STAGE(:p_document_id, :v_prefix);
+    ALTER STAGE RAW.IMAGES_STAGE REFRESH;
 
-    UPDATE SPROCKET.RAW.DOCUMENT_REGISTRY SET progress_pct = 75, status_updated_at = CURRENT_TIMESTAMP()
+    UPDATE RAW.DOCUMENT_REGISTRY SET progress_pct = 75, status_updated_at = CURRENT_TIMESTAMP()
     WHERE document_id = :p_document_id;
 
-    UPDATE SPROCKET.RAW.DOCUMENT_IMAGES di
+    UPDATE RAW.DOCUMENT_IMAGES di
     SET description = AI_COMPLETE(
         ''pixtral-large'',
         ''You are a bicycle mechanic assistant. Describe this image from a '' || COALESCE(:v_make || '' '' || :v_model, ''bicycle'') || '' service manual. Focus on technical details like part names, assembly steps, bolt locations, tool sizes, torque specs, and measurements. Be concise but thorough. If it shows a diagram, describe all labeled parts.'',
-        TO_FILE(''@SPROCKET.RAW.IMAGES_STAGE'', ''page'' || di.page_number || ''_img'' || di.image_index || ''.jpeg''),
+        TO_FILE(''@RAW.IMAGES_STAGE'', ''page'' || di.page_number || ''_img'' || di.image_index || ''.jpeg''),
         {''max_tokens'': 500}
     )
     WHERE document_id = :p_document_id AND description IS NULL;
@@ -532,12 +532,12 @@ BEGIN
         ''message'', ''pixtral-large AI_COMPLETE calls completed''
     )::VARCHAR);
 
-    UPDATE SPROCKET.RAW.DOCUMENT_REGISTRY SET progress_pct = 90, status_updated_at = CURRENT_TIMESTAMP()
+    UPDATE RAW.DOCUMENT_REGISTRY SET progress_pct = 90, status_updated_at = CURRENT_TIMESTAMP()
     WHERE document_id = :p_document_id;
 
     -- Insert text chunks
     v_step_start := CURRENT_TIMESTAMP();
-    INSERT INTO SPROCKET.SEARCH.DOCUMENT_CHUNKS (
+    INSERT INTO SEARCH.DOCUMENT_CHUNKS (
         document_id, content, page_number, chunk_type, source_file,
         component_category, document_type, component_catalog_ids, component_makes, component_models
     )
@@ -552,14 +552,14 @@ BEGIN
         ARRAY_CONSTRUCT(:v_catalog_id),
         ARRAY_CONSTRUCT(:v_make),
         ARRAY_CONSTRUCT(:v_model)
-    FROM SPROCKET.RAW.DOCUMENT_PAGES dp
+    FROM RAW.DOCUMENT_PAGES dp
     WHERE dp.document_id = :p_document_id AND LENGTH(dp.content) > 10;
     
-    SELECT COUNT(*) INTO :v_text_chunks FROM SPROCKET.SEARCH.DOCUMENT_CHUNKS 
+    SELECT COUNT(*) INTO :v_text_chunks FROM SEARCH.DOCUMENT_CHUNKS 
     WHERE document_id = :p_document_id AND chunk_type = ''text'';
 
     -- Insert image description chunks
-    INSERT INTO SPROCKET.SEARCH.DOCUMENT_CHUNKS (
+    INSERT INTO SEARCH.DOCUMENT_CHUNKS (
         document_id, content, page_number, chunk_type, source_file,
         component_category, document_type, component_catalog_ids, component_makes, component_models
     )
@@ -574,10 +574,10 @@ BEGIN
         ARRAY_CONSTRUCT(:v_catalog_id),
         ARRAY_CONSTRUCT(:v_make),
         ARRAY_CONSTRUCT(:v_model)
-    FROM SPROCKET.RAW.DOCUMENT_IMAGES di
+    FROM RAW.DOCUMENT_IMAGES di
     WHERE di.document_id = :p_document_id AND LENGTH(di.description) > 10;
     
-    SELECT COUNT(*) INTO :v_image_chunks FROM SPROCKET.SEARCH.DOCUMENT_CHUNKS 
+    SELECT COUNT(*) INTO :v_image_chunks FROM SEARCH.DOCUMENT_CHUNKS 
     WHERE document_id = :p_document_id AND chunk_type = ''image_description'';
     
     SYSTEM$LOG_INFO(OBJECT_CONSTRUCT(
@@ -590,11 +590,11 @@ BEGIN
         ''total_chunks'', :v_text_chunks + :v_image_chunks
     )::VARCHAR);
 
-    UPDATE SPROCKET.RAW.DOCUMENT_REGISTRY
+    UPDATE RAW.DOCUMENT_REGISTRY
     SET status = ''READY'', progress_pct = 100, status_updated_at = CURRENT_TIMESTAMP()
     WHERE document_id = :p_document_id;
 
-    DELETE FROM SPROCKET.PIPELINE.INGEST_QUEUE WHERE document_id = :p_document_id;
+    DELETE FROM PIPELINE.INGEST_QUEUE WHERE document_id = :p_document_id;
     
     -- Log successful completion
     SYSTEM$LOG_INFO(OBJECT_CONSTRUCT(
@@ -626,13 +626,13 @@ EXCEPTION
             ''duration_seconds'', DATEDIFF(second, :v_start_time, CURRENT_TIMESTAMP())
         )::VARCHAR);
         
-        UPDATE SPROCKET.RAW.DOCUMENT_REGISTRY
+        UPDATE RAW.DOCUMENT_REGISTRY
         SET status = ''FAILED'',
             status_updated_at = CURRENT_TIMESTAMP(),
             error_message = :SQLERRM
         WHERE document_id = :p_document_id;
 
-        DELETE FROM SPROCKET.PIPELINE.INGEST_QUEUE WHERE document_id = :p_document_id;
+        DELETE FROM PIPELINE.INGEST_QUEUE WHERE document_id = :p_document_id;
 
         RETURN OBJECT_CONSTRUCT(
             ''document_id'', :p_document_id,
@@ -647,7 +647,7 @@ END;
 --------------------------------------------------------------------
 -- Removes document from queue, deletes chunks/images/pages/links, marks ABORTED
 
-CREATE OR REPLACE PROCEDURE SPROCKET.PIPELINE.INGEST_ABORT(
+CREATE OR REPLACE PROCEDURE PIPELINE.INGEST_ABORT(
     p_document_id VARCHAR,
     p_reason VARCHAR
 )
@@ -657,13 +657,13 @@ EXECUTE AS OWNER
 AS
 '
 BEGIN
-    DELETE FROM SPROCKET.PIPELINE.INGEST_QUEUE WHERE document_id = :p_document_id;
-    DELETE FROM SPROCKET.SEARCH.DOCUMENT_CHUNKS WHERE document_id = :p_document_id;
-    DELETE FROM SPROCKET.RAW.DOCUMENT_IMAGES WHERE document_id = :p_document_id;
-    DELETE FROM SPROCKET.RAW.DOCUMENT_PAGES WHERE document_id = :p_document_id;
-    DELETE FROM SPROCKET.CURATED.COMPONENT_DOCUMENT_LINK WHERE document_id = :p_document_id;
+    DELETE FROM PIPELINE.INGEST_QUEUE WHERE document_id = :p_document_id;
+    DELETE FROM SEARCH.DOCUMENT_CHUNKS WHERE document_id = :p_document_id;
+    DELETE FROM RAW.DOCUMENT_IMAGES WHERE document_id = :p_document_id;
+    DELETE FROM RAW.DOCUMENT_PAGES WHERE document_id = :p_document_id;
+    DELETE FROM CURATED.COMPONENT_DOCUMENT_LINK WHERE document_id = :p_document_id;
 
-    UPDATE SPROCKET.RAW.DOCUMENT_REGISTRY
+    UPDATE RAW.DOCUMENT_REGISTRY
     SET status = ''ABORTED'',
         status_updated_at = CURRENT_TIMESTAMP(),
         error_message = COALESCE(:p_reason, ''User aborted'')
@@ -682,7 +682,7 @@ END;
 --------------------------------------------------------------------
 -- Returns current status, progress_pct, classification, errors
 
-CREATE OR REPLACE PROCEDURE SPROCKET.PIPELINE.INGEST_STATUS(p_document_id VARCHAR)
+CREATE OR REPLACE PROCEDURE PIPELINE.INGEST_STATUS(p_document_id VARCHAR)
 RETURNS VARIANT
 LANGUAGE SQL
 EXECUTE AS OWNER
@@ -703,7 +703,7 @@ BEGIN
         ''error_message'', error_message
     )
     INTO :v_result
-    FROM SPROCKET.RAW.DOCUMENT_REGISTRY
+    FROM RAW.DOCUMENT_REGISTRY
     WHERE document_id = :p_document_id;
 
     RETURN COALESCE(v_result, OBJECT_CONSTRUCT(''status'', ''NOT_FOUND'', ''document_id'', :p_document_id));

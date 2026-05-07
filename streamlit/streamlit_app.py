@@ -77,7 +77,7 @@ with st.sidebar:
     
     st.divider()
     
-    bikes_df = session.sql("SELECT * FROM SPROCKET.APP.USER_BIKES ORDER BY model_year DESC").to_pandas()
+    bikes_df = session.sql("SELECT * FROM APP.USER_BIKES ORDER BY model_year DESC").to_pandas()
     
     if bikes_df.empty:
         st.warning("No bikes found. Add a bike to get started.")
@@ -92,7 +92,7 @@ with st.sidebar:
     
     if 'current_bike' not in st.session_state or st.session_state.current_bike != selected_bike:
         with st.spinner("Loading bike context..."):
-            result = session.call('SPROCKET.APP.GET_BIKE_CONTEXT', selected_bike)
+            result = session.call('APP.GET_BIKE_CONTEXT', selected_bike)
             context_json = json.loads(result)
             st.session_state.current_bike = selected_bike
             st.session_state.context = context_json

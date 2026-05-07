@@ -1,10 +1,19 @@
 definition_version: 2
 entities:
-  streamlit_app:
+  sprocket_app:
     type: streamlit
     identifier:
-      name: SPROCKET.APP.SPROCKET_APP
+      name: SPROCKET_APP
     title: "Sprocket AI"
+    query_warehouse: SPROCKET_WH
+    main_file: streamlit_app.py
+    stage: streamlit
+
+  sprocket_app_dev:
+    type: streamlit
+    identifier:
+      name: SPROCKET_APP_DEV
+    title: "Sprocket AI (Dev)"
     query_warehouse: SPROCKET_WH
     main_file: streamlit_app.py
     stage: streamlit

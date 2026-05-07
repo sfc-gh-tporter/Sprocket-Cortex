@@ -16,14 +16,14 @@
 -- the agent itself.
 --------------------------------------------------------------------
 
-USE ROLE SYSADMIN;
+USE ROLE SPROCKET_DEPLOYER;
 USE WAREHOUSE SPROCKET_WH;
 
 --------------------------------------------------------------------
 -- USER_BIKES view - backs the bike-picker dropdown
 --------------------------------------------------------------------
 
-CREATE OR REPLACE VIEW SPROCKET.APP.USER_BIKES AS
+CREATE OR REPLACE VIEW APP.USER_BIKES AS
 SELECT 
     b.bike_id,
     b.model_year || ' ' || b.make || ' ' || b.model AS display_name,
@@ -32,8 +32,8 @@ SELECT
     b.model_year,
     b.category,
     COUNT(i.instance_id) AS component_count
-FROM SPROCKET.CURATED.BIKES b
-LEFT JOIN SPROCKET.CURATED.BIKE_COMPONENT_INSTANCES i ON b.bike_id = i.bike_id
+FROM CURATED.BIKES b
+LEFT JOIN CURATED.BIKE_COMPONENT_INSTANCES i ON b.bike_id = i.bike_id
 GROUP BY b.bike_id, b.model_year, b.make, b.model, b.category
 ORDER BY b.model_year DESC, b.make, b.model;
 
@@ -44,7 +44,7 @@ ORDER BY b.model_year DESC, b.make, b.model;
 --   .preamble        - ready-to-inject text for the agent
 --------------------------------------------------------------------
 
-CREATE OR REPLACE PROCEDURE SPROCKET.APP.GET_BIKE_CONTEXT(p_bike_id VARCHAR)
+CREATE OR REPLACE PROCEDURE APP.GET_BIKE_CONTEXT(p_bike_id VARCHAR)
 RETURNS VARIANT
 LANGUAGE SQL
 AS
@@ -57,7 +57,7 @@ BEGIN
             bike_id,
             model_year || ' ' || make || ' ' || model AS display_name,
             category
-        FROM SPROCKET.CURATED.BIKES
+        FROM CURATED.BIKES
         WHERE bike_id = :p_bike_id
     ),
     components AS (
@@ -68,8 +68,8 @@ BEGIN
             c.model_year,
             i.is_stock,
             i.custom_notes
-        FROM SPROCKET.CURATED.BIKE_COMPONENT_INSTANCES i
-        JOIN SPROCKET.CURATED.COMPONENT_CATALOG c ON i.catalog_id = c.catalog_id
+        FROM CURATED.BIKE_COMPONENT_INSTANCES i
+        JOIN CURATED.COMPONENT_CATALOG c ON i.catalog_id = c.catalog_id
         WHERE i.bike_id = :p_bike_id
     ),
     component_json AS (
@@ -115,10 +115,10 @@ $$;
 -- USAGE PATTERN (from Streamlit app)
 --
 -- 1. Populate bike-picker:
---    SELECT bike_id, display_name FROM SPROCKET.APP.USER_BIKES;
+--    SELECT bike_id, display_name FROM APP.USER_BIKES;
 --
 -- 2. When user selects a bike, get context:
---    CALL SPROCKET.APP.GET_BIKE_CONTEXT('stumpjumper-evo-2021');
+--    CALL APP.GET_BIKE_CONTEXT('stumpjumper-evo-2021');
 --    -> pulls .preamble text + .components for UI display
 --
 -- 3. When user sends a chat message, build the agent payload as:

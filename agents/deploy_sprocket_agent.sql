@@ -1,7 +1,7 @@
 -- Deploy Sprocket Cortex Agent
--- This SQL file creates/replaces the SPROCKET_AGENT in Snowflake
+-- Agent name is parameterized via &{AGENT_NAME} (passed by CI/CD workflow)
 
-CREATE OR REPLACE AGENT SPROCKET.APP.SPROCKET_AGENT
+CREATE OR REPLACE AGENT APP.&{AGENT_NAME}
   COMMENT = 'AI bicycle maintenance assistant for specs, procedures, and troubleshooting'
   PROFILE = '{"display_name": "Sprocket", "avatar": "bicycle", "color": "blue"}'
   FROM SPECIFICATION
@@ -76,6 +76,6 @@ CREATE OR REPLACE AGENT SPROCKET.APP.SPROCKET_AGENT
 
   tool_resources:
     search_manuals:
-      name: SPROCKET.SEARCH.MANUAL_SEARCH
+      name: SEARCH.MANUAL_SEARCH
       max_results: 10
   $$;
