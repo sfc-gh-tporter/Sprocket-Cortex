@@ -17,28 +17,26 @@ CREATE OR REPLACE TASK PIPELINE.INGEST_WORKER_TASK
     WAREHOUSE = SPROCKET_WH
     SCHEDULE = '1 MINUTE'
 AS
+$$
 DECLARE
     v_document_id VARCHAR;
     v_queue_id VARCHAR;
 BEGIN
-    -- Find oldest unprocessed document in queue
     SELECT queue_id, document_id INTO :v_queue_id, :v_document_id
     FROM PIPELINE.INGEST_QUEUE
     WHERE picked_up_at IS NULL
     ORDER BY enqueued_at
     LIMIT 1;
 
-    -- Process if found
     IF (v_queue_id IS NOT NULL) THEN
-        -- Mark as picked up (prevents other workers from grabbing it)
         UPDATE PIPELINE.INGEST_QUEUE 
         SET picked_up_at = CURRENT_TIMESTAMP() 
         WHERE queue_id = :v_queue_id;
         
-        -- Execute async processing
         CALL PIPELINE.INGEST_PROCESS_ASYNC(:v_document_id);
     END IF;
 END;
+$$;
 
 --------------------------------------------------------------------
 -- Start the task
