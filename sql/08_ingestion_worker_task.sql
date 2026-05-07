@@ -13,11 +13,11 @@ USE WAREHOUSE SPROCKET_WH;
 -- Runs every 1 minute, picks oldest document from queue, processes it
 -- Uses row locking (picked_up_at) to prevent concurrent processing
 
+EXECUTE IMMEDIATE $$
 CREATE OR REPLACE TASK PIPELINE.INGEST_WORKER_TASK
     WAREHOUSE = SPROCKET_WH
     SCHEDULE = '1 MINUTE'
 AS
-$$
 DECLARE
     v_document_id VARCHAR;
     v_queue_id VARCHAR;
