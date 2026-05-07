@@ -5,7 +5,7 @@
 USE ROLE SYSADMIN;
 USE WAREHOUSE SPROCKET_WH;
 
-CREATE OR REPLACE CORTEX SEARCH SERVICE SPROCKET.SEARCH.MANUAL_SEARCH
+CREATE OR REPLACE CORTEX SEARCH SERVICE SEARCH.MANUAL_SEARCH
 ON content
 ATTRIBUTES section, page_number, chunk_type, source_file, bike_model, model_year,
            component_category, document_type, component_catalog_ids, component_makes, component_models
@@ -28,5 +28,5 @@ AS (
         component_catalog_ids,
         component_makes,
         component_models
-    FROM SPROCKET.SEARCH.DOCUMENT_CHUNKS
+    FROM SEARCH.DOCUMENT_CHUNKS
 );
