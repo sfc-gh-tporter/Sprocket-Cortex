@@ -61,29 +61,23 @@ jobs:
           EOF
           chmod 0600 ~/.snowflake/config.toml
 
-      - name: Login to Snowflake image registry (dev)
+      - name: Login and push Docker image (dev)
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
         run: |
+          REGISTRY="${SNOWFLAKE_ACCOUNT}.registry.snowflakecomputing.com"
+          REPO="${REGISTRY}/sprocket_dev/app/sprocket_images"
           snow spcs image-registry login \
             --connection dev \
-            --image-repository SPROCKET_DEV.APP.SPROCKET_IMAGES
-
-      - name: Get registry URL
-        id: registry
-        run: |
-          REGISTRY=$(snow spcs image-registry url --connection dev \
-            --image-repository SPROCKET_DEV.APP.SPROCKET_IMAGES \
-            --format json | python3 -c "import sys,json; print(json.load(sys.stdin)['url'])")
-          echo "url=$REGISTRY" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push Docker image (dev)
-        run: |
+            --registry-url "${REGISTRY}"
           docker build \
             --platform linux/amd64 \
-            -t ${{ steps.registry.outputs.url }}/${{ env.IMAGE_NAME }}:dev \
-            -t ${{ steps.registry.outputs.url }}/${{ env.IMAGE_NAME }}:dev-${{ github.sha }} \
+            -t "${REPO}/${{ env.IMAGE_NAME }}:dev" \
+            -t "${REPO}/${{ env.IMAGE_NAME }}:dev-${{ github.sha }}" \
             .
-          docker push ${{ steps.registry.outputs.url }}/${{ env.IMAGE_NAME }}:dev
-          docker push ${{ steps.registry.outputs.url }}/${{ env.IMAGE_NAME }}:dev-${{ github.sha }}
+          docker push "${REPO}/${{ env.IMAGE_NAME }}:dev"
+          docker push "${REPO}/${{ env.IMAGE_NAME }}:dev-${{ github.sha }}"
+          echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
 
       - name: Update or create SPCS service (dev)
         run: |
@@ -101,7 +95,6 @@ jobs:
         run: |
           echo "✅ Sprocket frontend deployed to DEV!"
           echo "📍 Service: SPROCKET_DEV.APP.SPROCKET_FRONTEND_DEV"
-          echo "🐳 Image: ${{ steps.registry.outputs.url }}/${{ env.IMAGE_NAME }}:dev"
 
   # ── PROD ────────────────────────────────────────────────────
   deploy-prod:
@@ -148,29 +141,23 @@ jobs:
           EOF
           chmod 0600 ~/.snowflake/config.toml
 
-      - name: Login to Snowflake image registry (prod)
+      - name: Login and push Docker image (prod)
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
         run: |
+          REGISTRY="${SNOWFLAKE_ACCOUNT}.registry.snowflakecomputing.com"
+          REPO="${REGISTRY}/sprocket/app/sprocket_images"
           snow spcs image-registry login \
             --connection prod \
-            --image-repository SPROCKET.APP.SPROCKET_IMAGES
-
-      - name: Get registry URL
-        id: registry
-        run: |
-          REGISTRY=$(snow spcs image-registry url --connection prod \
-            --image-repository SPROCKET.APP.SPROCKET_IMAGES \
-            --format json | python3 -c "import sys,json; print(json.load(sys.stdin)['url'])")
-          echo "url=$REGISTRY" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push Docker image (prod)
-        run: |
+            --registry-url "${REGISTRY}"
           docker build \
             --platform linux/amd64 \
-            -t ${{ steps.registry.outputs.url }}/${{ env.IMAGE_NAME }}:latest \
-            -t ${{ steps.registry.outputs.url }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -t "${REPO}/${{ env.IMAGE_NAME }}:latest" \
+            -t "${REPO}/${{ env.IMAGE_NAME }}:${{ github.sha }}" \
             .
-          docker push ${{ steps.registry.outputs.url }}/${{ env.IMAGE_NAME }}:latest
-          docker push ${{ steps.registry.outputs.url }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push "${REPO}/${{ env.IMAGE_NAME }}:latest"
+          docker push "${REPO}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
 
       - name: Update or create SPCS service (prod)
         run: |
@@ -186,5 +173,4 @@ jobs:
         run: |
           echo "✅ Sprocket frontend deployed to PROD!"
           echo "📍 Service: SPROCKET.APP.SPROCKET_FRONTEND"
-          echo "🐳 Image: ${{ steps.registry.outputs.url }}/${{ env.IMAGE_NAME }}:latest"
           echo "🔖 SHA tag: ${{ github.sha }}"
