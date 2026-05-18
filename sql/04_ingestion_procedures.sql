@@ -399,9 +399,6 @@ DECLARE
     v_text_chunks INT;
     v_image_chunks INT;
 BEGIN
-    -- Set event table for this session only
-    ALTER SESSION SET EVENT_TABLE = PIPELINE.INGESTION_EVENTS;
-    
     v_start_time := CURRENT_TIMESTAMP();
     
     -- Log procedure entry

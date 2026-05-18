@@ -1,10 +1,22 @@
 -- Deploy Sprocket Cortex Agent
 -- Agent name is parameterized via &{AGENT_NAME} (passed by CI/CD workflow)
+--
+-- Uses ALTER AGENT to preserve monitoring history on updates.
+-- CREATE OR REPLACE is only used on first deploy (IF NOT EXISTS workaround via OR REPLACE).
+-- CI/CD runs CREATE OR REPLACE on first deploy, then ALTER AGENT for all subsequent updates.
 
-CREATE OR REPLACE AGENT APP.&{AGENT_NAME}
+CREATE AGENT IF NOT EXISTS APP.&{AGENT_NAME}
   COMMENT = 'AI bicycle maintenance assistant for specs, procedures, and troubleshooting'
   PROFILE = '{"display_name": "Sprocket", "avatar": "bicycle", "color": "blue"}'
-  FROM SPECIFICATION
+  FROM SPECIFICATION $$
+  models:
+    orchestration: claude-haiku-4-5
+  instructions:
+    orchestration: "placeholder"
+  $$;
+
+ALTER AGENT APP.&{AGENT_NAME}
+  MODIFY LIVE VERSION SET SPECIFICATION =
   $$
   models:
     orchestration: claude-haiku-4-5
