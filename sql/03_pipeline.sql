@@ -69,41 +69,60 @@ WHERE description IS NULL;
 -- Step 5: Populate SEARCH.DOCUMENT_CHUNKS (text + image descriptions)
 --------------------------------------------------------------------
 
--- Text chunks (one per page)
-INSERT INTO SEARCH.DOCUMENT_CHUNKS (document_id, content, section, page_number, chunk_type, source_file, bike_model, model_year)
+-- Text chunks (paragraph-level splitting with section_type and chunk_type classification)
+INSERT INTO SEARCH.DOCUMENT_CHUNKS (document_id, content, section, section_type, page_number, chunk_type, source_file, bike_model, model_year)
 WITH doc AS (
     SELECT document_id FROM RAW.DOCUMENT_REGISTRY 
     WHERE source_file = '2021_STUMPJUMPER_EVO_USER_MANUAL_ENGLISH.pdf'
     LIMIT 1
+),
+page_sections AS (
+    SELECT 
+        p.document_id,
+        p.content,
+        p.page_number,
+        CASE 
+            WHEN p.page_number <= 3 THEN 'Cover and Table of Contents'
+            WHEN p.page_number = 4 THEN '1. Introduction'
+            WHEN p.page_number BETWEEN 5 AND 8 THEN '2. Assembly Notes'
+            WHEN p.page_number = 9 THEN '4. Specifications - Geometry'
+            WHEN p.page_number = 10 THEN '4. Specifications - General'
+            WHEN p.page_number BETWEEN 11 AND 13 THEN '4. Specifications - Torque and Hardware'
+            WHEN p.page_number BETWEEN 14 AND 18 THEN '5. Internal Routing'
+            WHEN p.page_number BETWEEN 19 AND 25 THEN '6. Rear Triangle Pivot Assembly'
+            WHEN p.page_number BETWEEN 26 AND 27 THEN '7.1 Flip Chips'
+            WHEN p.page_number BETWEEN 28 AND 30 THEN '7.2 Headset and Fork / 8. Air Shock Setup'
+            WHEN p.page_number = 31 THEN '9. Derailleur Hanger'
+            WHEN p.page_number BETWEEN 32 AND 33 THEN '10. SWAT Bladder'
+            ELSE 'Other'
+        END AS section_label
+    FROM RAW.DOCUMENT_PAGES p
+    WHERE p.content IS NOT NULL AND LENGTH(p.content) > 10
 )
 SELECT 
     doc.document_id,
-    p.content,
-    CASE 
-        WHEN p.page_number <= 3 THEN 'Cover and Table of Contents'
-        WHEN p.page_number = 4 THEN '1. Introduction'
-        WHEN p.page_number BETWEEN 5 AND 8 THEN '2. Assembly Notes'
-        WHEN p.page_number = 9 THEN '4. Specifications - Geometry'
-        WHEN p.page_number = 10 THEN '4. Specifications - General'
-        WHEN p.page_number BETWEEN 11 AND 13 THEN '4. Specifications - Torque and Hardware'
-        WHEN p.page_number BETWEEN 14 AND 18 THEN '5. Internal Routing'
-        WHEN p.page_number BETWEEN 19 AND 25 THEN '6. Rear Triangle Pivot Assembly'
-        WHEN p.page_number BETWEEN 26 AND 27 THEN '7.1 Flip Chips'
-        WHEN p.page_number BETWEEN 28 AND 30 THEN '7.2 Headset and Fork / 8. Air Shock Setup'
-        WHEN p.page_number = 31 THEN '9. Derailleur Hanger'
-        WHEN p.page_number BETWEEN 32 AND 33 THEN '10. SWAT Bladder'
-        ELSE 'Other'
-    END AS section,
-    p.page_number,
-    'text' AS chunk_type,
+    TRIM(para.value::VARCHAR) AS content,
+    ps.section_label AS section,
+    CASE
+        WHEN LOWER(ps.section_label) RLIKE '.*(spec|torque|dimension|part number|hardware|geometry).*' THEN 'specification'
+        WHEN LOWER(ps.section_label) RLIKE '.*(assembly|routing|pivot|service|setup|install).*' THEN 'procedure'
+        ELSE 'general'
+    END AS section_type,
+    ps.page_number,
+    CASE
+        WHEN TRIM(para.value::VARCHAR) RLIKE '.*\\|.+\\|.*' THEN 'spec'
+        WHEN LOWER(TRIM(para.value::VARCHAR)) RLIKE '.*(\\d+\\s*(nm|in-lbf|ft-lbf)|torque|thread pitch|wrench size|socket).*' THEN 'spec'
+        ELSE 'text'
+    END AS chunk_type,
     '2021_STUMPJUMPER_EVO_USER_MANUAL_ENGLISH.pdf' AS source_file,
     '2021 Specialized Stumpjumper EVO' AS bike_model,
     2021 AS model_year
-FROM RAW.DOCUMENT_PAGES p, doc
-WHERE p.content IS NOT NULL AND LENGTH(p.content) > 10;
+FROM page_sections ps, doc,
+     LATERAL FLATTEN(input => SPLIT(ps.content, '\n\n')) para
+WHERE LENGTH(TRIM(para.value::VARCHAR)) > 30;
 
 -- Image description chunks
-INSERT INTO SEARCH.DOCUMENT_CHUNKS (document_id, content, section, page_number, chunk_type, source_file, bike_model, model_year)
+INSERT INTO SEARCH.DOCUMENT_CHUNKS (document_id, content, section, section_type, page_number, chunk_type, source_file, bike_model, model_year)
 WITH doc AS (
     SELECT document_id FROM RAW.DOCUMENT_REGISTRY 
     WHERE source_file = '2021_STUMPJUMPER_EVO_USER_MANUAL_ENGLISH.pdf'
@@ -127,6 +146,7 @@ SELECT
         WHEN di.page_number BETWEEN 32 AND 33 THEN '10. SWAT Bladder'
         ELSE 'Other'
     END AS section,
+    'image' AS section_type,
     di.page_number,
     'image_description' AS chunk_type,
     '2021_STUMPJUMPER_EVO_USER_MANUAL_ENGLISH.pdf' AS source_file,

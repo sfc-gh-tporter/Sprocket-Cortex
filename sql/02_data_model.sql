@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS SEARCH.DOCUMENT_CHUNKS (
     document_id             VARCHAR NOT NULL,
     content                 VARCHAR(16777216) NOT NULL,
     section                 VARCHAR,
+    section_type            VARCHAR,
     page_number             INT,
     chunk_type              VARCHAR DEFAULT 'text',
     source_file             VARCHAR,
