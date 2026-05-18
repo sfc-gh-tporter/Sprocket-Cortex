@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background: #121416;
+  color: #e5e7eb;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2d33; border-radius: 2px; }
+
+/* Markdown in chat bubbles */
+.prose-chat p { margin-bottom: 0.5rem; }
+.prose-chat p:last-child { margin-bottom: 0; }
+.prose-chat ul, .prose-chat ol { margin: 0.5rem 0 0.5rem 1.25rem; }
+.prose-chat li { margin-bottom: 0.25rem; line-height: 1.6; }
+.prose-chat strong { color: #f0fdf4; }
+.prose-chat code {
+  background: #0a0c0e;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: 'SF Mono', monospace;
+  font-size: 0.85em;
+  color: #10b981;
+}
+.prose-chat table { border-collapse: collapse; width: 100%; margin: 0.5rem 0; }
+.prose-chat th, .prose-chat td {
+  border: 1px solid #2a2d33;
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  text-align: left;
+}
+.prose-chat th { background: #0a0c0e; color: #6b7280; font-weight: 500; }

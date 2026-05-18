@@ -1,0 +1,176 @@
+name: Deploy Sprocket Frontend to SPCS
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'Dockerfile'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: sprocket-frontend
+
+jobs:
+  # ── DEV ─────────────────────────────────────────────────────
+  deploy-dev:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: self-hosted
+    environment: development
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Snowflake CLI
+        run: |
+          python -m pip install --upgrade pip
+          pip install snowflake-cli-labs
+
+      - name: Create Snowflake CLI config
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+        run: |
+          mkdir -p ~/.snowflake
+          echo "$SNOWFLAKE_PRIVATE_KEY" > ~/.snowflake/rsa_key.p8
+          chmod 0600 ~/.snowflake/rsa_key.p8
+          cat > ~/.snowflake/config.toml <<EOF
+          default_connection_name = "dev"
+
+          [connections.dev]
+          account = "$SNOWFLAKE_ACCOUNT"
+          user = "$SNOWFLAKE_USER"
+          authenticator = "SNOWFLAKE_JWT"
+          private_key_path = "~/.snowflake/rsa_key.p8"
+          role = "$SNOWFLAKE_ROLE"
+          warehouse = "$SNOWFLAKE_WAREHOUSE"
+          database = "SPROCKET_DEV"
+          EOF
+          chmod 0600 ~/.snowflake/config.toml
+
+      - name: Login and push Docker image (dev)
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+        run: |
+          REGISTRY="${SNOWFLAKE_ACCOUNT}.registry.snowflakecomputing.com"
+          REPO="${REGISTRY}/sprocket_dev/app/sprocket_images"
+          snow spcs image-registry login \
+            --connection dev \
+            --registry-url "${REGISTRY}"
+          docker build \
+            --platform linux/amd64 \
+            -t "${REPO}/${{ env.IMAGE_NAME }}:dev" \
+            -t "${REPO}/${{ env.IMAGE_NAME }}:dev-${{ github.sha }}" \
+            .
+          docker push "${REPO}/${{ env.IMAGE_NAME }}:dev"
+          docker push "${REPO}/${{ env.IMAGE_NAME }}:dev-${{ github.sha }}"
+          echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
+
+      - name: Update or create SPCS service (dev)
+        run: |
+          snow sql \
+            --query "ALTER SERVICE IF EXISTS SPROCKET_DEV.APP.SPROCKET_FRONTEND_DEV SUSPEND" \
+            --connection dev || true
+          snow sql \
+            --query "ALTER SERVICE IF EXISTS SPROCKET_DEV.APP.SPROCKET_FRONTEND_DEV RESUME" \
+            --connection dev || true
+          # If service doesn't exist yet, create it
+          snow sql -f sql/08_spcs_frontend.sql --connection dev || true
+
+      - name: Deployment summary (dev)
+        if: success()
+        run: |
+          echo "✅ Sprocket frontend deployed to DEV!"
+          echo "📍 Service: SPROCKET_DEV.APP.SPROCKET_FRONTEND_DEV"
+
+  # ── PROD ────────────────────────────────────────────────────
+  deploy-prod:
+    if: github.ref == 'refs/heads/main'
+    runs-on: self-hosted
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Snowflake CLI
+        run: |
+          python -m pip install --upgrade pip
+          pip install snowflake-cli-labs
+
+      - name: Create Snowflake CLI config
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+        run: |
+          mkdir -p ~/.snowflake
+          echo "$SNOWFLAKE_PRIVATE_KEY" > ~/.snowflake/rsa_key.p8
+          chmod 0600 ~/.snowflake/rsa_key.p8
+          cat > ~/.snowflake/config.toml <<EOF
+          default_connection_name = "prod"
+
+          [connections.prod]
+          account = "$SNOWFLAKE_ACCOUNT"
+          user = "$SNOWFLAKE_USER"
+          authenticator = "SNOWFLAKE_JWT"
+          private_key_path = "~/.snowflake/rsa_key.p8"
+          role = "$SNOWFLAKE_ROLE"
+          warehouse = "$SNOWFLAKE_WAREHOUSE"
+          database = "SPROCKET"
+          EOF
+          chmod 0600 ~/.snowflake/config.toml
+
+      - name: Login and push Docker image (prod)
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+        run: |
+          REGISTRY="${SNOWFLAKE_ACCOUNT}.registry.snowflakecomputing.com"
+          REPO="${REGISTRY}/sprocket/app/sprocket_images"
+          snow spcs image-registry login \
+            --connection prod \
+            --registry-url "${REGISTRY}"
+          docker build \
+            --platform linux/amd64 \
+            -t "${REPO}/${{ env.IMAGE_NAME }}:latest" \
+            -t "${REPO}/${{ env.IMAGE_NAME }}:${{ github.sha }}" \
+            .
+          docker push "${REPO}/${{ env.IMAGE_NAME }}:latest"
+          docker push "${REPO}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          echo "repo=${REPO}" >> "$GITHUB_OUTPUT"
+
+      - name: Update or create SPCS service (prod)
+        run: |
+          snow sql \
+            --query "ALTER SERVICE IF EXISTS SPROCKET.APP.SPROCKET_FRONTEND SUSPEND" \
+            --connection prod || true
+          snow sql \
+            --query "ALTER SERVICE IF EXISTS SPROCKET.APP.SPROCKET_FRONTEND RESUME" \
+            --connection prod || true
+
+      - name: Deployment summary (prod)
+        if: success()
+        run: |
+          echo "✅ Sprocket frontend deployed to PROD!"
+          echo "📍 Service: SPROCKET.APP.SPROCKET_FRONTEND"
+          echo "🔖 SHA tag: ${{ github.sha }}"
