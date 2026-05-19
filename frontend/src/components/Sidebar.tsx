@@ -2,8 +2,8 @@ import { Bike, Component, MaintenanceItem } from '../types'
 
 interface SidebarProps {
   bikes: Bike[]
-  selectedBikeId: number | null
-  onSelectBike: (id: number) => void
+  selectedBikeId: string | null
+  onSelectBike: (id: string | null) => void
   components: Component[]
   maintenance: MaintenanceItem[]
   loadingContext: boolean
@@ -36,7 +36,7 @@ export function Sidebar({
         <select
           className="w-full px-3 py-2.5 bg-carbon-800 border border-carbon-600 rounded-lg text-sm text-gray-200 focus:outline-none focus:border-emerald-dark cursor-pointer"
           value={selectedBikeId ?? ''}
-          onChange={(e) => onSelectBike(Number(e.target.value))}
+          onChange={(e) => onSelectBike(e.target.value || null)}
         >
           {bikes.length === 0 && <option value="">Loading bikes...</option>}
           {bikes.map((b) => (

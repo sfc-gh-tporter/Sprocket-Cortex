@@ -7,7 +7,7 @@ USE WAREHOUSE SPROCKET_WH;
 
 CREATE OR REPLACE CORTEX SEARCH SERVICE SEARCH.MANUAL_SEARCH
 ON content
-ATTRIBUTES section, page_number, chunk_type, source_file, bike_model, model_year,
+ATTRIBUTES section, section_type, page_number, chunk_type, source_file, bike_model, model_year,
            component_category, document_type, component_catalog_ids, component_makes, component_models
 WAREHOUSE = SPROCKET_WH
 TARGET_LAG = '1 hour'
@@ -18,6 +18,7 @@ AS (
         document_id,
         content,
         section,
+        section_type,
         page_number,
         chunk_type,
         source_file,

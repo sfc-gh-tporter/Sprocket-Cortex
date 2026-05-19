@@ -1,10 +1,22 @@
 -- Deploy Sprocket Cortex Agent
 -- Agent name is parameterized via &{AGENT_NAME} (passed by CI/CD workflow)
+--
+-- Uses ALTER AGENT to preserve monitoring history on updates.
+-- CREATE OR REPLACE is only used on first deploy (IF NOT EXISTS workaround via OR REPLACE).
+-- CI/CD runs CREATE OR REPLACE on first deploy, then ALTER AGENT for all subsequent updates.
 
-CREATE OR REPLACE AGENT APP.&{AGENT_NAME}
+CREATE AGENT IF NOT EXISTS APP.&{AGENT_NAME}
   COMMENT = 'AI bicycle maintenance assistant for specs, procedures, and troubleshooting'
   PROFILE = '{"display_name": "Sprocket", "avatar": "bicycle", "color": "blue"}'
-  FROM SPECIFICATION
+  FROM SPECIFICATION $$
+  models:
+    orchestration: claude-haiku-4-5
+  instructions:
+    orchestration: "placeholder"
+  $$;
+
+ALTER AGENT APP.&{AGENT_NAME}
+  MODIFY LIVE VERSION SET SPECIFICATION =
   $$
   models:
     orchestration: claude-haiku-4-5
@@ -27,8 +39,10 @@ CREATE OR REPLACE AGENT APP.&{AGENT_NAME}
       - Include specific make/model/year in search queries
 
       Search Strategy:
-      - Spec lookups: use filter {"@eq": {"chunk_type": "text"}}
-      - Procedure questions: no chunk_type filter
+      - Torque specs / bolt dimensions / part numbers: filter {"@eq": {"chunk_type": "spec"}} AND {"@contains": {"component_models": "<model>"}}
+      - Procedures / how-to / assembly / bleed: filter {"@eq": {"section_type": "procedure"}} AND {"@contains": {"component_models": "<model>"}}
+      - Safety / warnings: filter {"@eq": {"section_type": "warning"}}
+      - Spec lookups (general): use filter {"@eq": {"section_type": "specification"}}
       - Component-scoped: use {"@contains": {"component_models": "<model>"}}
       - Bike-scoped: use {"@eq": {"bike_model": "<bike>"}}
 
@@ -76,6 +90,37 @@ CREATE OR REPLACE AGENT APP.&{AGENT_NAME}
 
   tool_resources:
     search_manuals:
-      name: SEARCH.MANUAL_SEARCH
-      max_results: 10
+      name: &{DATABASE_NAME}.SEARCH.MANUAL_SEARCH
+      max_results: 5
+      columns_and_descriptions:
+        content:
+          description: "Text content of a chunk from a service manual. May be a procedure step, specification table, warning, or image description."
+          type: string
+          searchable: true
+          filterable: false
+        chunk_type:
+          description: "Content classification: 'spec' for torque values, bolt dimensions, part numbers, and specification tables; 'text' for procedures and general text; 'image_description' for images."
+          type: string
+          searchable: false
+          filterable: true
+        section_type:
+          description: "Semantic section classification: 'specification' for spec/torque/dimensions sections; 'procedure' for assembly/service/bleed/adjustment sections; 'warning' for safety warnings; 'image' for image descriptions; 'general' for introductory text."
+          type: string
+          searchable: false
+          filterable: true
+        component_models:
+          description: "Array of component model identifiers this chunk applies to (e.g. 'Dominion', 'Vivid', 'Stumpjumper EVO'). Use @contains filter for component-specific queries."
+          type: string
+          searchable: false
+          filterable: true
+        bike_model:
+          description: "Full bike model name this chunk applies to (e.g. '2021 Specialized Stumpjumper EVO'). Use @eq filter for frame-specific queries."
+          type: string
+          searchable: false
+          filterable: true
+        section:
+          description: "Section name from the manual (e.g. '4. Specifications - Torque and Hardware', '6. Rear Triangle Pivot Assembly')."
+          type: string
+          searchable: false
+          filterable: true
   $$;

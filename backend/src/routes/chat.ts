@@ -1,47 +1,77 @@
 import { Router, Request, Response } from 'express'
 import fetch from 'node-fetch'
-import { query, getSnowflakeHost, getAuthHeaders } from '../snowflake'
+import fs from 'fs'
+import { query, getSnowflakeHost } from '../snowflake'
 
 const router = Router()
 
-const AGENT_DB = process.env.AGENT_DB || 'SPROCKET'
+const AGENT_DB = process.env.AGENT_DATABASE || process.env.AGENT_DB || 'SPROCKET'
 const AGENT_SCHEMA = process.env.AGENT_SCHEMA || 'APP'
 const AGENT_NAME = process.env.AGENT_NAME || 'SPROCKET_AGENT'
 
-// POST /api/chat
+function getServiceToken(): string {
+  return fs.readFileSync('/snowflake/session/token', 'utf8').trim()
+}
+
+// POST /api/chat/thread — create a new Cortex thread
+router.post('/thread', async (_req: Request, res: Response) => {
+  try {
+    const host = getSnowflakeHost()
+    const r = await fetch(`https://${host}/api/v2/cortex/threads`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${getServiceToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ origin_application: 'sprocket' }),
+    })
+    if (!r.ok) {
+      const err = await r.text()
+      console.error('Thread create error:', r.status, err)
+      return res.status(500).json({ error: 'Failed to create thread' })
+    }
+    const data = await r.json() as { thread_id: string }
+    res.json({ thread_id: data.thread_id })
+  } catch (err) {
+    console.error('Thread create error:', err)
+    res.status(500).json({ error: 'Failed to create thread' })
+  }
+})
+
+// POST /api/chat — stream agent response using thread
 router.post('/', async (req: Request, res: Response) => {
-  const { message, bike_id, history = [] } = req.body as {
+  const { message, bike_id, thread_id, parent_message_id = 0 } = req.body as {
     message: string
-    bike_id: number | null
-    history: { role: string; content: string }[]
+    bike_id: string | null
+    thread_id: string
+    parent_message_id: number
   }
 
-  // Build preamble from bike context if a bike is selected
+  // Fetch bike preamble on first turn only
   let preamble = ''
-  if (bike_id) {
+  if (bike_id && parent_message_id === 0) {
     try {
-      const rows = await query<{ GET_BIKE_CONTEXT: string }>(
-        `SELECT APP.GET_BIKE_CONTEXT(${bike_id}) AS GET_BIKE_CONTEXT`
+      const rows = await query<{ GET_BIKE_CONTEXT: unknown }>(
+        `CALL APP.GET_BIKE_CONTEXT(?)`, [bike_id]
       )
-      const ctx = JSON.parse(rows[0].GET_BIKE_CONTEXT)
-      preamble = ctx.preamble ?? ''
+      const raw = rows[0]?.GET_BIKE_CONTEXT
+      const ctx: Record<string, unknown> = typeof raw === 'string' ? JSON.parse(raw) : (raw as Record<string, unknown>) ?? {}
+      preamble = (ctx.preamble ?? '') as string
     } catch (err) {
       console.warn('Failed to fetch preamble:', err)
     }
   }
 
-  // Compose messages: optional system preamble + history + new user message
-  const agentMessages: { role: string; content: string }[] = []
-  if (preamble) {
-    agentMessages.push({ role: 'user', content: preamble })
-    agentMessages.push({ role: 'assistant', content: 'Understood. I have your bike context.' })
-  }
-  for (const h of history) {
-    agentMessages.push({ role: h.role, content: h.content })
-  }
-  agentMessages.push({ role: 'user', content: message })
+  type AgentMessage = { role: string; content: { type: string; text: string }[] }
+  const toContent = (text: string) => [{ type: 'text', text }]
+  const agentMessages: AgentMessage[] = []
 
-  // Set up SSE response
+  if (preamble) {
+    agentMessages.push({ role: 'user', content: toContent(preamble) })
+    agentMessages.push({ role: 'assistant', content: toContent('Understood. I have your bike context.') })
+  }
+  agentMessages.push({ role: 'user', content: toContent(message) })
+
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
@@ -52,15 +82,21 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const host = getSnowflakeHost()
     const url = `https://${host}/api/v2/databases/${AGENT_DB}/schemas/${AGENT_SCHEMA}/agents/${AGENT_NAME}:run`
+    const callerToken = req.headers['sf-context-current-user-token'] as string | undefined
+    console.log(`Agent call: thread=${thread_id}, parent_msg=${parent_message_id}, callerToken=${callerToken ? 'present' : 'absent'}`)
 
     const agentRes = await fetch(url, {
       method: 'POST',
       headers: {
-        ...getAuthHeaders(),
+        Authorization: `Bearer ${getServiceToken()}`,
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
       },
-      body: JSON.stringify({ messages: agentMessages }),
+      body: JSON.stringify({
+        thread_id,
+        parent_message_id,
+        messages: agentMessages,
+      }),
     })
 
     if (!agentRes.ok || !agentRes.body) {
@@ -76,34 +112,28 @@ router.post('/', async (req: Request, res: Response) => {
     for await (const chunk of agentRes.body) {
       const text = chunk.toString()
       const lines = text.split('\n')
+      let currentEvent = ''
 
       for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim()
+          continue
+        }
         if (!line.startsWith('data: ')) continue
         const raw = line.slice(6).trim()
         if (!raw || raw === '[DONE]') continue
 
         try {
-          const event = JSON.parse(raw)
+          const payload = JSON.parse(raw)
 
-          // Text delta
-          if (event?.delta?.type === 'text_delta') {
-            send({ type: 'delta', text: event.delta.text })
-          }
-
-          // Citation / source references
-          if (event?.delta?.type === 'tool_result') {
-            try {
-              const toolContent = JSON.parse(event.delta.content ?? '{}')
-              if (toolContent?.results) {
-                for (const r of toolContent.results) {
-                  if (r?.source_id) sources.push(r.source_id)
-                }
-              }
-            } catch {}
-          }
-
-          // Done
-          if (event?.type === 'message_stop' || event === '[DONE]') {
+          if (currentEvent === 'response.text.delta' && payload.text) {
+            send({ type: 'delta', text: payload.text })
+          } else if (currentEvent === 'response.tool_result') {
+            const results = payload.results ?? []
+            for (const r of results) {
+              if (r?.source_id) sources.push(r.source_id)
+            }
+          } else if (currentEvent === 'done' || payload?.type === 'message_stop') {
             if (sources.length > 0) send({ type: 'sources', sources })
             res.write('data: [DONE]\n\n')
             return res.end()
@@ -111,6 +141,7 @@ router.post('/', async (req: Request, res: Response) => {
         } catch {
           // non-JSON SSE line, skip
         }
+        currentEvent = ''
       }
     }
 

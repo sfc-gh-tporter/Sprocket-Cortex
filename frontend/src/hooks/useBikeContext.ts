@@ -3,7 +3,7 @@ import { Bike, Component, MaintenanceItem } from '../types'
 
 export function useBikeContext() {
   const [bikes, setBikes] = useState<Bike[]>([])
-  const [selectedBikeId, setSelectedBikeId] = useState<number | null>(null)
+  const [selectedBikeId, setSelectedBikeId] = useState<string | null>(null)
   const [components, setComponents] = useState<Component[]>([])
   const [maintenance, setMaintenance] = useState<MaintenanceItem[]>([])
   const [loadingBikes, setLoadingBikes] = useState(true)

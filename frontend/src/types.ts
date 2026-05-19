@@ -1,5 +1,5 @@
 export interface Bike {
-  bike_id: number
+  bike_id: string
   year: number
   brand: string
   model: string

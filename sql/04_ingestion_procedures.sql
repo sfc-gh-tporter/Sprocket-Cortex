@@ -399,9 +399,6 @@ DECLARE
     v_text_chunks INT;
     v_image_chunks INT;
 BEGIN
-    -- Set event table for this session only
-    ALTER SESSION SET EVENT_TABLE = PIPELINE.INGESTION_EVENTS;
-    
     v_start_time := CURRENT_TIMESTAMP();
     
     -- Log procedure entry
@@ -535,37 +532,51 @@ BEGIN
     UPDATE RAW.DOCUMENT_REGISTRY SET progress_pct = 90, status_updated_at = CURRENT_TIMESTAMP()
     WHERE document_id = :p_document_id;
 
-    -- Insert text chunks
+    -- Insert text chunks (paragraph-level splitting)
     v_step_start := CURRENT_TIMESTAMP();
     INSERT INTO SEARCH.DOCUMENT_CHUNKS (
-        document_id, content, page_number, chunk_type, source_file,
+        document_id, content, section, section_type, page_number, chunk_type, source_file,
         component_category, document_type, component_catalog_ids, component_makes, component_models
     )
     SELECT 
         dp.document_id,
-        dp.content,
+        TRIM(para.value::VARCHAR) AS content,
+        REGEXP_SUBSTR(TRIM(para.value::VARCHAR), ''^#{1,3}\\s+(.+)$'', 1, 1, ''me'') AS section,
+        CASE
+            WHEN LOWER(REGEXP_SUBSTR(TRIM(para.value::VARCHAR), ''^#{1,3}\\s+(.+)$'', 1, 1, ''me'')) RLIKE ''.*( spec|torque|dimension|part number|hardware|geometry|clearance|pressure|travel|sag).*'' THEN ''specification''
+            WHEN LOWER(REGEXP_SUBSTR(TRIM(para.value::VARCHAR), ''^#{1,3}\\s+(.+)$'', 1, 1, ''me'')) RLIKE ''.*(assembly|disassembly|procedure|install|bleed|service|remov|replac|adjust|lubricate|setting).*'' THEN ''procedure''
+            WHEN LOWER(TRIM(para.value::VARCHAR)) RLIKE ''.*(warning|caution|danger|do not|never|must not).*'' THEN ''warning''
+            ELSE ''general''
+        END AS section_type,
         dp.page_number,
-        ''text'',
+        CASE
+            WHEN TRIM(para.value::VARCHAR) RLIKE ''.*\\|.+\\|.*'' THEN ''spec''
+            WHEN LOWER(TRIM(para.value::VARCHAR)) RLIKE ''.*(\\d+\\s*(nm|in-lbf|ft-lbf|in\\.lbf|ft\\.lbf)|torque|thread pitch|bolt size|wrench size|\\d+mm\\s*socket).*'' THEN ''spec''
+            ELSE ''text''
+        END AS chunk_type,
         :v_source_file,
         :v_component_category,
         :v_document_type,
         ARRAY_CONSTRUCT(:v_catalog_id),
         ARRAY_CONSTRUCT(:v_make),
         ARRAY_CONSTRUCT(:v_model)
-    FROM RAW.DOCUMENT_PAGES dp
-    WHERE dp.document_id = :p_document_id AND LENGTH(dp.content) > 10;
+    FROM RAW.DOCUMENT_PAGES dp,
+         LATERAL FLATTEN(input => SPLIT(dp.content, ''\n\n'')) para
+    WHERE dp.document_id = :p_document_id
+      AND LENGTH(TRIM(para.value::VARCHAR)) > 30;
     
     SELECT COUNT(*) INTO :v_text_chunks FROM SEARCH.DOCUMENT_CHUNKS 
     WHERE document_id = :p_document_id AND chunk_type = ''text'';
 
     -- Insert image description chunks
     INSERT INTO SEARCH.DOCUMENT_CHUNKS (
-        document_id, content, page_number, chunk_type, source_file,
+        document_id, content, section_type, page_number, chunk_type, source_file,
         component_category, document_type, component_catalog_ids, component_makes, component_models
     )
     SELECT 
         di.document_id,
         ''[Image: page '' || di.page_number || '', figure '' || di.image_index || ''] '' || di.description,
+        ''image'',
         di.page_number,
         ''image_description'',
         :v_source_file,
