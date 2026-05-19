@@ -42,18 +42,9 @@ jobs:
           mkdir -p ~/.snowflake
           echo "$SNOWFLAKE_PRIVATE_KEY" > ~/.snowflake/rsa_key.p8
           chmod 0600 ~/.snowflake/rsa_key.p8
-          cat > ~/.snowflake/config.toml <<EOF
-          default_connection_name = "dev"
-
-          [connections.dev]
-          account = "$SNOWFLAKE_ACCOUNT"
-          user = "$SNOWFLAKE_USER"
-          authenticator = "SNOWFLAKE_JWT"
-          private_key_path = "~/.snowflake/rsa_key.p8"
-          role = "$SNOWFLAKE_ROLE"
-          warehouse = "$SNOWFLAKE_WAREHOUSE"
-          database = "SPROCKET_DEV"
-          EOF
+          printf '[connections.dev]\naccount = "%s"\nuser = "%s"\nauthenticator = "SNOWFLAKE_JWT"\nprivate_key_path = "%s/.snowflake/rsa_key.p8"\nrole = "%s"\nwarehouse = "%s"\ndatabase = "SPROCKET_DEV"\n' \
+            "$SNOWFLAKE_ACCOUNT" "$SNOWFLAKE_USER" "$HOME" "$SNOWFLAKE_ROLE" "$SNOWFLAKE_WAREHOUSE" \
+            > ~/.snowflake/config.toml
           chmod 0600 ~/.snowflake/config.toml
 
       - name: Login and push Docker image (dev)
@@ -116,18 +107,9 @@ jobs:
           mkdir -p ~/.snowflake
           echo "$SNOWFLAKE_PRIVATE_KEY" > ~/.snowflake/rsa_key.p8
           chmod 0600 ~/.snowflake/rsa_key.p8
-          cat > ~/.snowflake/config.toml <<EOF
-          default_connection_name = "prod"
-
-          [connections.prod]
-          account = "$SNOWFLAKE_ACCOUNT"
-          user = "$SNOWFLAKE_USER"
-          authenticator = "SNOWFLAKE_JWT"
-          private_key_path = "~/.snowflake/rsa_key.p8"
-          role = "$SNOWFLAKE_ROLE"
-          warehouse = "$SNOWFLAKE_WAREHOUSE"
-          database = "SPROCKET"
-          EOF
+          printf '[connections.prod]\naccount = "%s"\nuser = "%s"\nauthenticator = "SNOWFLAKE_JWT"\nprivate_key_path = "%s/.snowflake/rsa_key.p8"\nrole = "%s"\nwarehouse = "%s"\ndatabase = "SPROCKET"\n' \
+            "$SNOWFLAKE_ACCOUNT" "$SNOWFLAKE_USER" "$HOME" "$SNOWFLAKE_ROLE" "$SNOWFLAKE_WAREHOUSE" \
+            > ~/.snowflake/config.toml
           chmod 0600 ~/.snowflake/config.toml
 
       - name: Login and push Docker image (prod)
