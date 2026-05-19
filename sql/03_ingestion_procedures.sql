@@ -1,5 +1,5 @@
 --------------------------------------------------------------------
--- 04_ingestion_procedures.sql  –  Sprocket HITL Ingestion Pipeline
+-- 03_ingestion_procedures.sql  –  Sprocket HITL Ingestion Pipeline
 --------------------------------------------------------------------
 -- Creates 7 stored procedures for human-in-the-loop document ingestion
 -- with 4 checkpoints: Preview → Classify → Link → Finalize → Async Processing
