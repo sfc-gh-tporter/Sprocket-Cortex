@@ -1,12 +1,14 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { ChatMessage } from '../types'
 
 let idCounter = 0
 const uid = () => `msg-${++idCounter}`
 
-export function useChat(bikeId: number | null) {
+export function useChat(bikeId: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [streaming, setStreaming] = useState(false)
+  const threadRef = useRef<string | null>(null)
+  const parentMsgRef = useRef<number>(0)
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -24,13 +26,23 @@ export function useChat(bikeId: number | null) {
       setStreaming(true)
 
       try {
+        // Create thread on first message of a conversation
+        if (!threadRef.current) {
+          const threadRes = await fetch('/api/chat/thread', { method: 'POST' })
+          if (!threadRes.ok) throw new Error('Failed to create thread')
+          const { thread_id } = await threadRes.json() as { thread_id: string }
+          threadRef.current = thread_id
+          parentMsgRef.current = 0
+        }
+
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: text,
             bike_id: bikeId,
-            history: messages.map((m) => ({ role: m.role, content: m.content })),
+            thread_id: threadRef.current,
+            parent_message_id: parentMsgRef.current,
           }),
         })
 
@@ -75,6 +87,10 @@ export function useChat(bikeId: number | null) {
             }
           }
         }
+
+        // Increment parent_message_id for next turn
+        parentMsgRef.current += 1
+
       } catch (err) {
         console.error('Chat error:', err)
         setMessages((prev) =>
@@ -93,10 +109,14 @@ export function useChat(bikeId: number | null) {
         setStreaming(false)
       }
     },
-    [messages, bikeId, streaming]
+    [bikeId, streaming]
   )
 
-  const reset = useCallback(() => setMessages([]), [])
+  const reset = useCallback(() => {
+    setMessages([])
+    threadRef.current = null
+    parentMsgRef.current = 0
+  }, [])
 
   return { messages, streaming, sendMessage, reset }
 }

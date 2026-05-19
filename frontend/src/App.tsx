@@ -14,7 +14,12 @@ export default function App() {
     loadingContext,
   } = useBikeContext()
 
-  const { messages, streaming, sendMessage } = useChat(selectedBikeId)
+  const { messages, streaming, sendMessage, reset } = useChat(selectedBikeId)
+
+  const handleSelectBike = (id: string | null) => {
+    setSelectedBikeId(id)
+    reset()
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -31,7 +36,7 @@ export default function App() {
         <Sidebar
           bikes={bikes}
           selectedBikeId={selectedBikeId}
-          onSelectBike={setSelectedBikeId}
+          onSelectBike={handleSelectBike}
           components={components}
           maintenance={maintenance}
           loadingContext={loadingContext}

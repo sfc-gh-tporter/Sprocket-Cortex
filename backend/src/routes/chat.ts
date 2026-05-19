@@ -9,17 +9,47 @@ const AGENT_DB = process.env.AGENT_DATABASE || process.env.AGENT_DB || 'SPROCKET
 const AGENT_SCHEMA = process.env.AGENT_SCHEMA || 'APP'
 const AGENT_NAME = process.env.AGENT_NAME || 'SPROCKET_AGENT'
 
-// POST /api/chat
+function getServiceToken(): string {
+  return fs.readFileSync('/snowflake/session/token', 'utf8').trim()
+}
+
+// POST /api/chat/thread — create a new Cortex thread
+router.post('/thread', async (_req: Request, res: Response) => {
+  try {
+    const host = getSnowflakeHost()
+    const r = await fetch(`https://${host}/api/v2/cortex/threads`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${getServiceToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ origin_application: 'sprocket' }),
+    })
+    if (!r.ok) {
+      const err = await r.text()
+      console.error('Thread create error:', r.status, err)
+      return res.status(500).json({ error: 'Failed to create thread' })
+    }
+    const data = await r.json() as { thread_id: string }
+    res.json({ thread_id: data.thread_id })
+  } catch (err) {
+    console.error('Thread create error:', err)
+    res.status(500).json({ error: 'Failed to create thread' })
+  }
+})
+
+// POST /api/chat — stream agent response using thread
 router.post('/', async (req: Request, res: Response) => {
-  const { message, bike_id, history = [] } = req.body as {
+  const { message, bike_id, thread_id, parent_message_id = 0 } = req.body as {
     message: string
     bike_id: string | null
-    history: { role: string; content: string }[]
+    thread_id: string
+    parent_message_id: number
   }
 
-  // Build preamble from bike context if a bike is selected
+  // Fetch bike preamble on first turn only
   let preamble = ''
-  if (bike_id) {
+  if (bike_id && parent_message_id === 0) {
     try {
       const rows = await query<{ GET_BIKE_CONTEXT: unknown }>(
         `CALL APP.GET_BIKE_CONTEXT(?)`, [bike_id]
@@ -32,20 +62,16 @@ router.post('/', async (req: Request, res: Response) => {
     }
   }
 
-  // Compose messages: optional system preamble + history + new user message
   type AgentMessage = { role: string; content: { type: string; text: string }[] }
   const toContent = (text: string) => [{ type: 'text', text }]
   const agentMessages: AgentMessage[] = []
+
   if (preamble) {
     agentMessages.push({ role: 'user', content: toContent(preamble) })
     agentMessages.push({ role: 'assistant', content: toContent('Understood. I have your bike context.') })
   }
-  for (const h of history) {
-    agentMessages.push({ role: h.role, content: toContent(h.content) })
-  }
   agentMessages.push({ role: 'user', content: toContent(message) })
 
-  // Set up SSE response
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
@@ -56,20 +82,21 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const host = getSnowflakeHost()
     const url = `https://${host}/api/v2/databases/${AGENT_DB}/schemas/${AGENT_SCHEMA}/agents/${AGENT_NAME}:run`
-
-    // Use service token directly for Agent REST API (caller's rights combined token is for SDK only)
-    const serviceToken = fs.readFileSync('/snowflake/session/token', 'utf8').trim()
     const callerToken = req.headers['sf-context-current-user-token'] as string | undefined
-    console.log(`Agent call: host=${host}, callerToken=${callerToken ? 'present' : 'absent'}`)
+    console.log(`Agent call: thread=${thread_id}, parent_msg=${parent_message_id}, callerToken=${callerToken ? 'present' : 'absent'}`)
 
     const agentRes = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${serviceToken}`,
+        Authorization: `Bearer ${getServiceToken()}`,
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
       },
-      body: JSON.stringify({ messages: agentMessages }),
+      body: JSON.stringify({
+        thread_id,
+        parent_message_id,
+        messages: agentMessages,
+      }),
     })
 
     if (!agentRes.ok || !agentRes.body) {
@@ -102,12 +129,10 @@ router.post('/', async (req: Request, res: Response) => {
           if (currentEvent === 'response.text.delta' && payload.text) {
             send({ type: 'delta', text: payload.text })
           } else if (currentEvent === 'response.tool_result') {
-            try {
-              const results = payload.results ?? []
-              for (const r of results) {
-                if (r?.source_id) sources.push(r.source_id)
-              }
-            } catch {}
+            const results = payload.results ?? []
+            for (const r of results) {
+              if (r?.source_id) sources.push(r.source_id)
+            }
           } else if (currentEvent === 'done' || payload?.type === 'message_stop') {
             if (sources.length > 0) send({ type: 'sources', sources })
             res.write('data: [DONE]\n\n')
