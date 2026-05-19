@@ -127,9 +127,14 @@ router.post('/', async (req: Request, res: Response) => {
         try {
           const payload = JSON.parse(raw)
 
-          if (currentEvent === 'metadata' && payload.metadata?.role === 'assistant') {
-            assistantMessageId = payload.metadata.message_id
+          if (currentEvent === 'metadata') {
+            console.log('metadata event:', JSON.stringify(payload))
+            if (payload.metadata?.role === 'assistant') {
+              assistantMessageId = payload.metadata.message_id
+              console.log('Captured assistant_message_id:', assistantMessageId)
+            }
           } else if (currentEvent === 'response') {
+            console.log('response event metadata:', JSON.stringify(payload.metadata))
             if (payload.metadata?.assistant_message_id != null) {
               assistantMessageId = payload.metadata.assistant_message_id
             }
