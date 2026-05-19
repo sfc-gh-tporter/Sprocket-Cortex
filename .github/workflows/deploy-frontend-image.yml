@@ -73,31 +73,7 @@ jobs:
           docker push "${REPO}/${{ env.IMAGE_NAME }}:dev-${{ github.sha }}"
 
       - name: Restart SPCS service (dev)
-        run: |
-          snow sql --query "ALTER SERVICE SPROCKET_DEV.APP.SPROCKET_FRONTEND_DEV FROM SPECIFICATION \$\$
-          spec:
-            containers:
-              - name: sprocket-frontend
-                image: /sprocket_dev/app/sprocket_images/sprocket-frontend:dev
-                env:
-                  SNOWFLAKE_WAREHOUSE: SPROCKET_WH
-                  SNOWFLAKE_DATABASE: SPROCKET_DEV
-                  SNOWFLAKE_SCHEMA: APP
-                  AGENT_DB: SPROCKET_DEV
-                  AGENT_SCHEMA: AGENT
-                  AGENT_NAME: SPROCKET_AGENT_DEV
-                  FRONTEND_DIST: /app/frontend/dist
-                readinessProbe:
-                  port: 3001
-                  path: /health
-            endpoints:
-              - name: http
-                port: 3001
-                public: true
-          capabilities:
-            securityContext:
-              executeAsCaller: true
-          \$\$" --connection dev
+        run: snow sql -f spcs/service-spec-dev.sql --connection dev
 
       - name: Cleanup CI credentials
         if: always()
@@ -166,31 +142,7 @@ jobs:
           docker push "${REPO}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
 
       - name: Restart SPCS service (prod)
-        run: |
-          snow sql --query "ALTER SERVICE SPROCKET.APP.SPROCKET_FRONTEND FROM SPECIFICATION \$\$
-          spec:
-            containers:
-              - name: sprocket-frontend
-                image: /sprocket/app/sprocket_images/sprocket-frontend:latest
-                env:
-                  SNOWFLAKE_WAREHOUSE: SPROCKET_WH
-                  SNOWFLAKE_DATABASE: SPROCKET
-                  SNOWFLAKE_SCHEMA: APP
-                  AGENT_DB: SPROCKET
-                  AGENT_SCHEMA: AGENT
-                  AGENT_NAME: SPROCKET_AGENT
-                  FRONTEND_DIST: /app/frontend/dist
-                readinessProbe:
-                  port: 3001
-                  path: /health
-            endpoints:
-              - name: http
-                port: 3001
-                public: true
-          capabilities:
-            securityContext:
-              executeAsCaller: true
-          \$\$" --connection prod
+        run: snow sql -f spcs/service-spec-prod.sql --connection prod
 
       - name: Cleanup CI credentials
         if: always()
