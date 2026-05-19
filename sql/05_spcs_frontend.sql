@@ -31,8 +31,6 @@ CREATE SERVICE IF NOT EXISTS SPROCKET_DEV.APP.SPROCKET_FRONTEND_DEV
         - name: sprocket-frontend
           image: /sprocket_dev/app/sprocket_images/sprocket-frontend:dev
           env:
-            PORT: "3001"
-            SNOWFLAKE_ACCOUNT: ""
             SNOWFLAKE_WAREHOUSE: "SPROCKET_WH"
             SNOWFLAKE_DATABASE: "SPROCKET_DEV"
             SNOWFLAKE_SCHEMA: "APP"
@@ -47,6 +45,9 @@ CREATE SERVICE IF NOT EXISTS SPROCKET_DEV.APP.SPROCKET_FRONTEND_DEV
         - name: http
           port: 3001
           public: true
+    capabilities:
+      securityContext:
+        executeAsCaller: true
   $$
   MIN_INSTANCES = 1
   MAX_INSTANCES = 1
@@ -77,8 +78,6 @@ CREATE SERVICE IF NOT EXISTS SPROCKET.APP.SPROCKET_FRONTEND
         - name: sprocket-frontend
           image: /sprocket/app/sprocket_images/sprocket-frontend:latest
           env:
-            PORT: "3001"
-            SNOWFLAKE_ACCOUNT: ""
             SNOWFLAKE_WAREHOUSE: "SPROCKET_WH"
             SNOWFLAKE_DATABASE: "SPROCKET"
             SNOWFLAKE_SCHEMA: "APP"
@@ -93,6 +92,9 @@ CREATE SERVICE IF NOT EXISTS SPROCKET.APP.SPROCKET_FRONTEND
         - name: http
           port: 3001
           public: true
+    capabilities:
+      securityContext:
+        executeAsCaller: true
   $$
   MIN_INSTANCES = 1
   MAX_INSTANCES = 2
