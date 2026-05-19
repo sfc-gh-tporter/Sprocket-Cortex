@@ -26,15 +26,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
       - name: Install Snowflake CLI
-        run: |
-          python -m pip install --upgrade pip
-          pip install snowflake-cli-labs
+        run: pip3 install --upgrade snowflake-cli-labs
 
       - name: Create Snowflake CLI config
         env:
@@ -68,8 +61,7 @@ jobs:
           REGISTRY="${SNOWFLAKE_ACCOUNT}.registry.snowflakecomputing.com"
           REPO="${REGISTRY}/sprocket_dev/app/sprocket_images"
           snow spcs image-registry login \
-            --connection dev \
-            --registry-url "${REGISTRY}"
+            --connection dev
           docker build \
             --platform linux/amd64 \
             -t "${REPO}/${{ env.IMAGE_NAME }}:dev" \
@@ -106,15 +98,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
       - name: Install Snowflake CLI
-        run: |
-          python -m pip install --upgrade pip
-          pip install snowflake-cli-labs
+        run: pip3 install --upgrade snowflake-cli-labs
 
       - name: Create Snowflake CLI config
         env:
@@ -148,8 +133,7 @@ jobs:
           REGISTRY="${SNOWFLAKE_ACCOUNT}.registry.snowflakecomputing.com"
           REPO="${REGISTRY}/sprocket/app/sprocket_images"
           snow spcs image-registry login \
-            --connection prod \
-            --registry-url "${REGISTRY}"
+            --connection prod
           docker build \
             --platform linux/amd64 \
             -t "${REPO}/${{ env.IMAGE_NAME }}:latest" \
