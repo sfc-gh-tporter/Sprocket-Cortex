@@ -5,7 +5,7 @@
 -- CREATE OR REPLACE is only used on first deploy (IF NOT EXISTS workaround via OR REPLACE).
 -- CI/CD runs CREATE OR REPLACE on first deploy, then ALTER AGENT for all subsequent updates.
 
-CREATE AGENT IF NOT EXISTS APP.&{AGENT_NAME}
+CREATE AGENT IF NOT EXISTS AGENT.&{AGENT_NAME}
   COMMENT = 'AI bicycle maintenance assistant for specs, procedures, and troubleshooting'
   PROFILE = '{"display_name": "Sprocket", "avatar": "bicycle", "color": "blue"}'
   FROM SPECIFICATION $$
@@ -15,7 +15,7 @@ CREATE AGENT IF NOT EXISTS APP.&{AGENT_NAME}
     orchestration: "placeholder"
   $$;
 
-ALTER AGENT APP.&{AGENT_NAME}
+ALTER AGENT AGENT.&{AGENT_NAME}
   MODIFY LIVE VERSION SET SPECIFICATION =
   $$
   models:
