@@ -124,3 +124,5 @@ ALTER AGENT AGENT.&{AGENT_NAME}
           searchable: false
           filterable: true
   $$;
+
+  GRANT USAGE ON AGENT AGENT.&{AGENT_NAME} TO ROLE sysadmin;
