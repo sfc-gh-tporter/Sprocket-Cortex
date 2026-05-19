@@ -74,8 +74,30 @@ jobs:
 
       - name: Restart SPCS service (dev)
         run: |
-          snow sql --query "ALTER SERVICE IF EXISTS SPROCKET_DEV.APP.SPROCKET_FRONTEND_DEV SUSPEND" --connection dev || true
-          snow sql --query "ALTER SERVICE IF EXISTS SPROCKET_DEV.APP.SPROCKET_FRONTEND_DEV RESUME" --connection dev
+          snow sql --query "ALTER SERVICE SPROCKET_DEV.APP.SPROCKET_FRONTEND_DEV FROM SPECIFICATION \$\$
+          spec:
+            containers:
+              - name: sprocket-frontend
+                image: /sprocket_dev/app/sprocket_images/sprocket-frontend:dev
+                env:
+                  SNOWFLAKE_WAREHOUSE: SPROCKET_WH
+                  SNOWFLAKE_DATABASE: SPROCKET_DEV
+                  SNOWFLAKE_SCHEMA: APP
+                  AGENT_DB: SPROCKET_DEV
+                  AGENT_SCHEMA: AGENT
+                  AGENT_NAME: SPROCKET_AGENT_DEV
+                  FRONTEND_DIST: /app/frontend/dist
+                readinessProbe:
+                  port: 3001
+                  path: /health
+            endpoints:
+              - name: http
+                port: 3001
+                public: true
+          capabilities:
+            securityContext:
+              executeAsCaller: true
+          \$\$" --connection dev
 
       - name: Cleanup CI credentials
         if: always()
@@ -145,8 +167,30 @@ jobs:
 
       - name: Restart SPCS service (prod)
         run: |
-          snow sql --query "ALTER SERVICE IF EXISTS SPROCKET.APP.SPROCKET_FRONTEND SUSPEND" --connection prod || true
-          snow sql --query "ALTER SERVICE IF EXISTS SPROCKET.APP.SPROCKET_FRONTEND RESUME" --connection prod
+          snow sql --query "ALTER SERVICE SPROCKET.APP.SPROCKET_FRONTEND FROM SPECIFICATION \$\$
+          spec:
+            containers:
+              - name: sprocket-frontend
+                image: /sprocket/app/sprocket_images/sprocket-frontend:latest
+                env:
+                  SNOWFLAKE_WAREHOUSE: SPROCKET_WH
+                  SNOWFLAKE_DATABASE: SPROCKET
+                  SNOWFLAKE_SCHEMA: APP
+                  AGENT_DB: SPROCKET
+                  AGENT_SCHEMA: AGENT
+                  AGENT_NAME: SPROCKET_AGENT
+                  FRONTEND_DIST: /app/frontend/dist
+                readinessProbe:
+                  port: 3001
+                  path: /health
+            endpoints:
+              - name: http
+                port: 3001
+                public: true
+          capabilities:
+            securityContext:
+              executeAsCaller: true
+          \$\$" --connection prod
 
       - name: Cleanup CI credentials
         if: always()
