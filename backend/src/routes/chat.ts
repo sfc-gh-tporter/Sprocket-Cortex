@@ -108,6 +108,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const sources: string[] = []
+    let assistantMessageId: number | null = null
 
     for await (const chunk of agentRes.body) {
       const text = chunk.toString()
@@ -126,17 +127,23 @@ router.post('/', async (req: Request, res: Response) => {
         try {
           const payload = JSON.parse(raw)
 
-          if (currentEvent === 'response.text.delta' && payload.text) {
+          if (currentEvent === 'metadata' && payload.metadata?.role === 'assistant') {
+            assistantMessageId = payload.metadata.message_id
+          } else if (currentEvent === 'response') {
+            if (payload.metadata?.assistant_message_id != null) {
+              assistantMessageId = payload.metadata.assistant_message_id
+            }
+            if (sources.length > 0) send({ type: 'sources', sources })
+            send({ type: 'done', assistant_message_id: assistantMessageId })
+            res.write('data: [DONE]\n\n')
+            return res.end()
+          } else if (currentEvent === 'response.text.delta' && payload.text) {
             send({ type: 'delta', text: payload.text })
           } else if (currentEvent === 'response.tool_result') {
             const results = payload.results ?? []
             for (const r of results) {
               if (r?.source_id) sources.push(r.source_id)
             }
-          } else if (currentEvent === 'done' || payload?.type === 'message_stop') {
-            if (sources.length > 0) send({ type: 'sources', sources })
-            res.write('data: [DONE]\n\n')
-            return res.end()
           }
         } catch {
           // non-JSON SSE line, skip
@@ -146,6 +153,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     if (sources.length > 0) send({ type: 'sources', sources })
+    send({ type: 'done', assistant_message_id: assistantMessageId })
     res.write('data: [DONE]\n\n')
     res.end()
   } catch (err) {

@@ -80,6 +80,8 @@ export function useChat(bikeId: string | null) {
                       m.id === assistantMsg.id ? { ...m, sources: parsed.sources } : m
                     )
                   )
+                } else if (parsed.type === 'done' && parsed.assistant_message_id != null) {
+                  parentMsgRef.current = parsed.assistant_message_id
                 }
               } catch {
                 // non-JSON line, ignore
@@ -87,9 +89,6 @@ export function useChat(bikeId: string | null) {
             }
           }
         }
-
-        // Increment parent_message_id for next turn
-        parentMsgRef.current += 1
 
       } catch (err) {
         console.error('Chat error:', err)
