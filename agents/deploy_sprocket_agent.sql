@@ -90,7 +90,7 @@ ALTER AGENT APP.&{AGENT_NAME}
 
   tool_resources:
     search_manuals:
-      name: SEARCH.MANUAL_SEARCH
+      name: &{DATABASE_NAME}.SEARCH.MANUAL_SEARCH
       max_results: 5
       columns_and_descriptions:
         content:

@@ -67,7 +67,7 @@ jobs:
 
       - name: Deploy Sprocket Agent
         shell: bash
-        run: snow sql -f agents/deploy_sprocket_agent.sql --variable AGENT_NAME=SPROCKET_AGENT_DEV --connection prod
+        run: snow sql -f agents/deploy_sprocket_agent.sql --variable AGENT_NAME=SPROCKET_AGENT_DEV --variable DATABASE_NAME=SPROCKET_DEV --connection prod
 
       - name: Deployment summary
         if: success()
@@ -128,7 +128,7 @@ jobs:
 
       - name: Deploy Sprocket Agent
         shell: bash
-        run: snow sql -f agents/deploy_sprocket_agent.sql --variable AGENT_NAME=SPROCKET_AGENT --connection prod
+        run: snow sql -f agents/deploy_sprocket_agent.sql --variable AGENT_NAME=SPROCKET_AGENT --variable DATABASE_NAME=SPROCKET --connection prod
 
       - name: Deployment summary
         if: success()
