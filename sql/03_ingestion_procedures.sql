@@ -1,5 +1,5 @@
 --------------------------------------------------------------------
--- 04_ingestion_procedures.sql  –  Sprocket HITL Ingestion Pipeline
+-- 03_ingestion_procedures.sql  –  Sprocket HITL Ingestion Pipeline
 --------------------------------------------------------------------
 -- Creates 7 stored procedures for human-in-the-loop document ingestion
 -- with 4 checkpoints: Preview → Classify → Link → Finalize → Async Processing
@@ -189,13 +189,13 @@ PAGES:
         CASE WHEN UPPER(model) = UPPER(:v_classification:model::VARCHAR) THEN 0 ELSE 1 END
     )
     INTO :v_matches
-    FROM CURATED.COMPONENT_CATALOG
+    FROM MODELED.COMPONENT_CATALOG
     WHERE UPPER(make) = UPPER(:v_classification:make::VARCHAR)
        OR UPPER(model) LIKE ''%'' || UPPER(:v_classification:model::VARCHAR) || ''%''
        OR UPPER(:v_classification:model::VARCHAR) LIKE ''%'' || UPPER(model) || ''%'';
 
     SELECT catalog_id INTO :v_proposed_catalog_id
-    FROM CURATED.COMPONENT_CATALOG
+    FROM MODELED.COMPONENT_CATALOG
     WHERE UPPER(make) = UPPER(:v_classification:make::VARCHAR)
       AND (UPPER(model) = UPPER(:v_classification:model::VARCHAR)
            OR UPPER(model) LIKE ''%'' || UPPER(:v_classification:model::VARCHAR) || ''%''
@@ -262,7 +262,7 @@ BEGIN
     ELSE
         -- Create new catalog entry from classification
         v_catalog_id := UUID_STRING();
-        INSERT INTO CURATED.COMPONENT_CATALOG 
+        INSERT INTO MODELED.COMPONENT_CATALOG 
             (catalog_id, make, model, model_year, component_type, component_category, notes)
         SELECT 
             :v_catalog_id,
@@ -280,13 +280,13 @@ BEGIN
     -- Create bike instance if bike_id given and instance doesn''t exist
     IF (p_bike_id IS NOT NULL) THEN
         SELECT instance_id INTO :v_instance_id
-        FROM CURATED.BIKE_COMPONENT_INSTANCES
+        FROM MODELED.BIKE_COMPONENT_INSTANCES
         WHERE bike_id = :p_bike_id AND catalog_id = :v_catalog_id
         LIMIT 1;
 
         IF (v_instance_id IS NULL) THEN
             v_instance_id := UUID_STRING();
-            INSERT INTO CURATED.BIKE_COMPONENT_INSTANCES 
+            INSERT INTO MODELED.BIKE_COMPONENT_INSTANCES 
                 (instance_id, bike_id, catalog_id, is_stock, custom_notes)
             VALUES (
                 :v_instance_id, :p_bike_id, :v_catalog_id, FALSE,
@@ -297,13 +297,13 @@ BEGIN
 
     -- Create document link if not exists
     SELECT link_id INTO :v_link_id
-    FROM CURATED.COMPONENT_DOCUMENT_LINK
+    FROM MODELED.COMPONENT_DOCUMENT_LINK
     WHERE catalog_id = :v_catalog_id AND document_id = :p_document_id
     LIMIT 1;
 
     IF (v_link_id IS NULL) THEN
         v_link_id := UUID_STRING();
-        INSERT INTO CURATED.COMPONENT_DOCUMENT_LINK (link_id, catalog_id, document_id, link_type)
+        INSERT INTO MODELED.COMPONENT_DOCUMENT_LINK (link_id, catalog_id, document_id, link_type)
         VALUES (:v_link_id, :v_catalog_id, :p_document_id, :v_link_type);
     END IF;
 
@@ -421,8 +421,8 @@ BEGIN
         dr.classification:document_type::VARCHAR
     INTO :v_source_file, :v_catalog_id, :v_make, :v_model, :v_component_category, :v_document_type
     FROM RAW.DOCUMENT_REGISTRY dr
-    LEFT JOIN CURATED.COMPONENT_DOCUMENT_LINK l ON dr.document_id = l.document_id
-    LEFT JOIN CURATED.COMPONENT_CATALOG c ON l.catalog_id = c.catalog_id
+    LEFT JOIN MODELED.COMPONENT_DOCUMENT_LINK l ON dr.document_id = l.document_id
+    LEFT JOIN MODELED.COMPONENT_CATALOG c ON l.catalog_id = c.catalog_id
     WHERE dr.document_id = :p_document_id
     LIMIT 1;
 
@@ -672,7 +672,7 @@ BEGIN
     DELETE FROM SEARCH.DOCUMENT_CHUNKS WHERE document_id = :p_document_id;
     DELETE FROM RAW.DOCUMENT_IMAGES WHERE document_id = :p_document_id;
     DELETE FROM RAW.DOCUMENT_PAGES WHERE document_id = :p_document_id;
-    DELETE FROM CURATED.COMPONENT_DOCUMENT_LINK WHERE document_id = :p_document_id;
+    DELETE FROM MODELED.COMPONENT_DOCUMENT_LINK WHERE document_id = :p_document_id;
 
     UPDATE RAW.DOCUMENT_REGISTRY
     SET status = ''ABORTED'',

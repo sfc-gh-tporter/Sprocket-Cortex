@@ -1,5 +1,5 @@
 --------------------------------------------------------------------
--- 05_cortex_search.sql  –  Cortex Search Service
+-- 04_cortex_search.sql  –  Cortex Search Service
 --------------------------------------------------------------------
 
 USE ROLE SPROCKET_DEPLOYER;

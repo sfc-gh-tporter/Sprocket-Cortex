@@ -1,4 +1,4 @@
-name: Deploy Sprocket Frontend to SPCS
+name: Deploy Sprocket Frontend Service Spec
 
 on:
   push:
@@ -6,18 +6,14 @@ on:
       - main
       - dev
     paths:
-      - 'frontend/**'
-      - 'backend/**'
-      - 'Dockerfile'
-      - '.github/workflows/deploy-frontend.yml'
+      - 'spcs/**'
+      - '.github/workflows/deploy-frontend-service.yml'
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: sprocket-frontend
   SNOWFLAKE_HOME: /tmp/snowflake-ci
 
 jobs:
-  # ── DEV ─────────────────────────────────────────────────────
   deploy-dev:
     if: github.ref == 'refs/heads/dev'
     runs-on: self-hosted
@@ -57,25 +53,8 @@ jobs:
       - name: Validate Snowflake connection
         run: snow connection test --connection dev
 
-      - name: Login to image registry (dev)
-        run: snow spcs image-registry login --connection dev
-
-      - name: Build and push Docker image (dev)
-        run: |
-          REGISTRY="sfsenorthamerica-tporterawsdev.registry.snowflakecomputing.com"
-          REPO="${REGISTRY}/sprocket_dev/app/sprocket_images"
-          docker build \
-            --platform linux/amd64 \
-            -t "${REPO}/${{ env.IMAGE_NAME }}:dev" \
-            -t "${REPO}/${{ env.IMAGE_NAME }}:dev-${{ github.sha }}" \
-            .
-          docker push "${REPO}/${{ env.IMAGE_NAME }}:dev"
-          docker push "${REPO}/${{ env.IMAGE_NAME }}:dev-${{ github.sha }}"
-
-      - name: Restart SPCS service (dev)
-        run: |
-          snow sql --query "ALTER SERVICE IF EXISTS SPROCKET_DEV.APP.SPROCKET_FRONTEND_DEV SUSPEND" --connection dev || true
-          snow sql --query "ALTER SERVICE IF EXISTS SPROCKET_DEV.APP.SPROCKET_FRONTEND_DEV RESUME" --connection dev
+      - name: Apply service spec (dev)
+        run: snow sql -f spcs/service-spec-dev.sql --connection dev
 
       - name: Cleanup CI credentials
         if: always()
@@ -84,11 +63,9 @@ jobs:
       - name: Deployment summary (dev)
         if: success()
         run: |
-          echo "✅ Sprocket frontend deployed to DEV!"
+          echo "✅ Service spec applied to DEV!"
           echo "📍 Service: SPROCKET_DEV.APP.SPROCKET_FRONTEND_DEV"
-          echo "🔖 SHA tag: dev-${{ github.sha }}"
 
-  # ── PROD ────────────────────────────────────────────────────
   deploy-prod:
     if: github.ref == 'refs/heads/main'
     runs-on: self-hosted
@@ -128,25 +105,8 @@ jobs:
       - name: Validate Snowflake connection
         run: snow connection test --connection prod
 
-      - name: Login to image registry (prod)
-        run: snow spcs image-registry login --connection prod
-
-      - name: Build and push Docker image (prod)
-        run: |
-          REGISTRY="sfsenorthamerica-tporterawsdev.registry.snowflakecomputing.com"
-          REPO="${REGISTRY}/sprocket/app/sprocket_images"
-          docker build \
-            --platform linux/amd64 \
-            -t "${REPO}/${{ env.IMAGE_NAME }}:latest" \
-            -t "${REPO}/${{ env.IMAGE_NAME }}:${{ github.sha }}" \
-            .
-          docker push "${REPO}/${{ env.IMAGE_NAME }}:latest"
-          docker push "${REPO}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-
-      - name: Restart SPCS service (prod)
-        run: |
-          snow sql --query "ALTER SERVICE IF EXISTS SPROCKET.APP.SPROCKET_FRONTEND SUSPEND" --connection prod || true
-          snow sql --query "ALTER SERVICE IF EXISTS SPROCKET.APP.SPROCKET_FRONTEND RESUME" --connection prod
+      - name: Apply service spec (prod)
+        run: snow sql -f spcs/service-spec-prod.sql --connection prod
 
       - name: Cleanup CI credentials
         if: always()
@@ -155,6 +115,5 @@ jobs:
       - name: Deployment summary (prod)
         if: success()
         run: |
-          echo "✅ Sprocket frontend deployed to PROD!"
+          echo "✅ Service spec applied to PROD!"
           echo "📍 Service: SPROCKET.APP.SPROCKET_FRONTEND"
-          echo "🔖 SHA tag: ${{ github.sha }}"

@@ -1,5 +1,5 @@
 --------------------------------------------------------------------
--- 07_session_context.sql  -  Session context helpers
+-- 06_session_context.sql  -  Session context helpers
 --
 -- These helpers let the app layer (Streamlit / React) answer two
 -- questions without the agent having to know the data model:
@@ -32,8 +32,8 @@ SELECT
     b.model_year,
     b.category,
     COUNT(i.instance_id) AS component_count
-FROM CURATED.BIKES b
-LEFT JOIN CURATED.BIKE_COMPONENT_INSTANCES i ON b.bike_id = i.bike_id
+FROM MODELED.BIKES b
+LEFT JOIN MODELED.BIKE_COMPONENT_INSTANCES i ON b.bike_id = i.bike_id
 GROUP BY b.bike_id, b.model_year, b.make, b.model, b.category
 ORDER BY b.model_year DESC, b.make, b.model;
 
@@ -57,7 +57,7 @@ BEGIN
             bike_id,
             model_year || ' ' || make || ' ' || model AS display_name,
             category
-        FROM CURATED.BIKES
+        FROM MODELED.BIKES
         WHERE bike_id = :p_bike_id
     ),
     components AS (
@@ -68,8 +68,8 @@ BEGIN
             c.model_year,
             i.is_stock,
             i.custom_notes
-        FROM CURATED.BIKE_COMPONENT_INSTANCES i
-        JOIN CURATED.COMPONENT_CATALOG c ON i.catalog_id = c.catalog_id
+        FROM MODELED.BIKE_COMPONENT_INSTANCES i
+        JOIN MODELED.COMPONENT_CATALOG c ON i.catalog_id = c.catalog_id
         WHERE i.bike_id = :p_bike_id
     ),
     component_json AS (

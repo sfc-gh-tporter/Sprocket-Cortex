@@ -9,7 +9,7 @@ USE WAREHOUSE SPROCKET_WH;
 -- RAW SCHEMA – pipeline landing tables
 ----------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS RAW.DOCUMENT_REGISTRY (
+CREATE OR ALTER TABLE RAW.DOCUMENT_REGISTRY (
     document_id     VARCHAR DEFAULT UUID_STRING(),
     source_file     VARCHAR NOT NULL,
     file_path       VARCHAR,
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS RAW.DOCUMENT_REGISTRY (
     PRIMARY KEY (document_id)
 );
 
-CREATE TABLE IF NOT EXISTS RAW.DOCUMENT_PAGES (
+CREATE OR ALTER TABLE RAW.DOCUMENT_PAGES (
     page_id         VARCHAR DEFAULT UUID_STRING(),
     document_id     VARCHAR NOT NULL,
     page_number     INT NOT NULL,
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS RAW.DOCUMENT_PAGES (
     PRIMARY KEY (page_id)
 );
 
-CREATE TABLE IF NOT EXISTS RAW.DOCUMENT_IMAGES (
+CREATE OR ALTER TABLE RAW.DOCUMENT_IMAGES (
     image_id        VARCHAR DEFAULT UUID_STRING(),
     document_id     VARCHAR NOT NULL,
     page_number     INT NOT NULL,
@@ -43,10 +43,10 @@ CREATE TABLE IF NOT EXISTS RAW.DOCUMENT_IMAGES (
 );
 
 ----------------------------------------------------------------------
--- CURATED SCHEMA – reference tables
+-- MODELED SCHEMA – reference tables
 ----------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS CURATED.BIKES (
+CREATE OR ALTER TABLE MODELED.BIKES (
     bike_id         VARCHAR DEFAULT UUID_STRING(),
     model_year      INT NOT NULL,
     make            VARCHAR NOT NULL,
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS CURATED.BIKES (
     PRIMARY KEY (bike_id)
 );
 
-CREATE TABLE IF NOT EXISTS CURATED.COMPONENT_CATALOG (
+CREATE OR ALTER TABLE MODELED.COMPONENT_CATALOG (
     catalog_id          VARCHAR DEFAULT UUID_STRING(),
     make                VARCHAR NOT NULL,
     model               VARCHAR NOT NULL,
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS CURATED.COMPONENT_CATALOG (
     PRIMARY KEY (catalog_id)
 );
 
-CREATE TABLE IF NOT EXISTS CURATED.BIKE_COMPONENT_INSTANCES (
+CREATE OR ALTER TABLE MODELED.BIKE_COMPONENT_INSTANCES (
     instance_id             VARCHAR DEFAULT UUID_STRING(),
     bike_id                 VARCHAR NOT NULL,
     catalog_id              VARCHAR NOT NULL,
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS CURATED.BIKE_COMPONENT_INSTANCES (
     PRIMARY KEY (instance_id)
 );
 
-CREATE TABLE IF NOT EXISTS CURATED.COMPONENT_DOCUMENT_LINK (
+CREATE OR ALTER TABLE MODELED.COMPONENT_DOCUMENT_LINK (
     link_id         VARCHAR DEFAULT UUID_STRING(),
     catalog_id      VARCHAR NOT NULL,
     document_id     VARCHAR NOT NULL,
@@ -97,8 +97,7 @@ CREATE TABLE IF NOT EXISTS CURATED.COMPONENT_DOCUMENT_LINK (
 ----------------------------------------------------------------------
 -- SEARCH SCHEMA – Cortex Search source table
 ----------------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS SEARCH.DOCUMENT_CHUNKS (
+CREATE OR ALTER TABLE SEARCH.DOCUMENT_CHUNKS (
     chunk_id                VARCHAR DEFAULT UUID_STRING(),
     document_id             VARCHAR NOT NULL,
     content                 VARCHAR(16777216) NOT NULL,
@@ -117,42 +116,4 @@ CREATE TABLE IF NOT EXISTS SEARCH.DOCUMENT_CHUNKS (
     PRIMARY KEY (chunk_id)
 );
 
-----------------------------------------------------------------------
--- APP SCHEMA – Hybrid tables for transactional data
-----------------------------------------------------------------------
 
-CREATE HYBRID TABLE IF NOT EXISTS APP.SERVICE_HISTORY (
-    service_id      VARCHAR NOT NULL DEFAULT UUID_STRING(),
-    bike_id         VARCHAR NOT NULL,
-    service_date    TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
-    service_type    VARCHAR NOT NULL,
-    component_id    VARCHAR,
-    description     VARCHAR,
-    parts_used      VARIANT,
-    cost            FLOAT,
-    mileage         FLOAT,
-    technician      VARCHAR,
-    notes           VARCHAR,
-    PRIMARY KEY (service_id)
-);
-
-CREATE HYBRID TABLE IF NOT EXISTS APP.CHAT_SESSIONS (
-    session_id      VARCHAR NOT NULL DEFAULT UUID_STRING(),
-    user_id         VARCHAR DEFAULT 'default',
-    bike_id         VARCHAR,
-    started_at      TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
-    ended_at        TIMESTAMP_NTZ,
-    title           VARCHAR,
-    PRIMARY KEY (session_id)
-);
-
-CREATE HYBRID TABLE IF NOT EXISTS APP.CHAT_MESSAGES (
-    message_id      VARCHAR NOT NULL DEFAULT UUID_STRING(),
-    session_id      VARCHAR NOT NULL,
-    role            VARCHAR NOT NULL,
-    content         VARCHAR(16777216) NOT NULL,
-    created_at      TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
-    tool_calls      VARIANT,
-    PRIMARY KEY (message_id),
-    INDEX idx_session (session_id)
-);

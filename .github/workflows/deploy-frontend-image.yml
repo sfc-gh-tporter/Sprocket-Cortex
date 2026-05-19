@@ -1,0 +1,156 @@
+name: Build & Push Sprocket Frontend Image
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'frontend/**'
+      - 'backend/**'
+      - 'Dockerfile'
+      - '.github/workflows/deploy-frontend-image.yml'
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: sprocket-frontend
+  SNOWFLAKE_HOME: /tmp/snowflake-ci
+
+jobs:
+  # ── DEV ─────────────────────────────────────────────────────
+  deploy-dev:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: self-hosted
+    environment: development
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Snowflake CLI
+        run: pip3 install --upgrade snowflake-cli-labs
+
+      - name: Configure Snowflake CLI
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+        run: |
+          mkdir -p $SNOWFLAKE_HOME
+          echo "$SNOWFLAKE_PRIVATE_KEY" > $SNOWFLAKE_HOME/rsa_key.p8
+          chmod 0600 $SNOWFLAKE_HOME/rsa_key.p8
+          cat > $SNOWFLAKE_HOME/config.toml <<EOF
+          default_connection_name = "dev"
+
+          [connections.dev]
+          account = "$SNOWFLAKE_ACCOUNT"
+          user = "$SNOWFLAKE_USER"
+          authenticator = "SNOWFLAKE_JWT"
+          private_key_path = "$SNOWFLAKE_HOME/rsa_key.p8"
+          role = "$SNOWFLAKE_ROLE"
+          warehouse = "$SNOWFLAKE_WAREHOUSE"
+          EOF
+          chmod 0600 $SNOWFLAKE_HOME/config.toml
+
+      - name: Validate Snowflake connection
+        run: snow connection test --connection dev
+
+      - name: Login to image registry (dev)
+        run: snow spcs image-registry login --connection dev
+
+      - name: Build and push Docker image (dev)
+        run: |
+          REGISTRY="sfsenorthamerica-tporterawsdev.registry.snowflakecomputing.com"
+          REPO="${REGISTRY}/sprocket_dev/app/sprocket_images"
+          docker build \
+            --platform linux/amd64 \
+            -t "${REPO}/${{ env.IMAGE_NAME }}:dev" \
+            -t "${REPO}/${{ env.IMAGE_NAME }}:dev-${{ github.sha }}" \
+            .
+          docker push "${REPO}/${{ env.IMAGE_NAME }}:dev"
+          docker push "${REPO}/${{ env.IMAGE_NAME }}:dev-${{ github.sha }}"
+
+      - name: Restart SPCS service (dev)
+        run: snow sql -f spcs/service-spec-dev.sql --connection dev
+
+      - name: Cleanup CI credentials
+        if: always()
+        run: rm -rf $SNOWFLAKE_HOME
+
+      - name: Deployment summary (dev)
+        if: success()
+        run: |
+          echo "✅ Sprocket frontend deployed to DEV!"
+          echo "📍 Service: SPROCKET_DEV.APP.SPROCKET_FRONTEND_DEV"
+          echo "🔖 SHA tag: dev-${{ github.sha }}"
+
+  # ── PROD ────────────────────────────────────────────────────
+  deploy-prod:
+    if: github.ref == 'refs/heads/main'
+    runs-on: self-hosted
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Snowflake CLI
+        run: pip3 install --upgrade snowflake-cli-labs
+
+      - name: Configure Snowflake CLI
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+        run: |
+          mkdir -p $SNOWFLAKE_HOME
+          echo "$SNOWFLAKE_PRIVATE_KEY" > $SNOWFLAKE_HOME/rsa_key.p8
+          chmod 0600 $SNOWFLAKE_HOME/rsa_key.p8
+          cat > $SNOWFLAKE_HOME/config.toml <<EOF
+          default_connection_name = "prod"
+
+          [connections.prod]
+          account = "$SNOWFLAKE_ACCOUNT"
+          user = "$SNOWFLAKE_USER"
+          authenticator = "SNOWFLAKE_JWT"
+          private_key_path = "$SNOWFLAKE_HOME/rsa_key.p8"
+          role = "$SNOWFLAKE_ROLE"
+          warehouse = "$SNOWFLAKE_WAREHOUSE"
+          EOF
+          chmod 0600 $SNOWFLAKE_HOME/config.toml
+
+      - name: Validate Snowflake connection
+        run: snow connection test --connection prod
+
+      - name: Login to image registry (prod)
+        run: snow spcs image-registry login --connection prod
+
+      - name: Build and push Docker image (prod)
+        run: |
+          REGISTRY="sfsenorthamerica-tporterawsdev.registry.snowflakecomputing.com"
+          REPO="${REGISTRY}/sprocket/app/sprocket_images"
+          docker build \
+            --platform linux/amd64 \
+            -t "${REPO}/${{ env.IMAGE_NAME }}:latest" \
+            -t "${REPO}/${{ env.IMAGE_NAME }}:${{ github.sha }}" \
+            .
+          docker push "${REPO}/${{ env.IMAGE_NAME }}:latest"
+          docker push "${REPO}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+
+      - name: Restart SPCS service (prod)
+        run: snow sql -f spcs/service-spec-prod.sql --connection prod
+
+      - name: Cleanup CI credentials
+        if: always()
+        run: rm -rf $SNOWFLAKE_HOME
+
+      - name: Deployment summary (prod)
+        if: success()
+        run: |
+          echo "✅ Sprocket frontend deployed to PROD!"
+          echo "📍 Service: SPROCKET.APP.SPROCKET_FRONTEND"
+          echo "🔖 SHA tag: ${{ github.sha }}"
