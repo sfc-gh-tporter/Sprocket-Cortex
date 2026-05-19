@@ -69,22 +69,12 @@ jobs:
         shell: bash
         run: |
           echo "Deploying SQL scripts in order..."
-          for script in sql/01_foundation.sql sql/02_data_model.sql sql/04_ingestion_procedures.sql; do
+          for script in sql/01_foundation.sql sql/02_data_model.sql sql/03_ingestion_procedures.sql sql/04_cortex_search.sql sql/05_spcs_infra.sql sql/06_session_context.sql; do
             if [ -f "$script" ]; then
               echo "Executing $script..."
               snow sql -f "$script" --connection prod
             fi
           done
-          for script in sql/05_cortex_search.sql sql/06_seed_data.sql sql/07_session_context.sql; do
-            if [ -f "$script" ]; then
-              echo "Executing $script..."
-              snow sql -f "$script" --connection prod
-            fi
-          done
-          if [ -f "sql/08_ingestion_worker_task.sql" ]; then
-            echo "Executing sql/08_ingestion_worker_task.sql..."
-            snow sql -f sql/08_ingestion_worker_task.sql --connection prod
-          fi
 
       - name: Deployment summary
         if: success()
@@ -148,22 +138,12 @@ jobs:
         shell: bash
         run: |
           echo "Deploying SQL scripts in order..."
-          for script in sql/01_foundation.sql sql/02_data_model.sql sql/04_ingestion_procedures.sql; do
+          for script in sql/01_foundation.sql sql/02_data_model.sql sql/03_ingestion_procedures.sql sql/04_cortex_search.sql sql/05_spcs_infra.sql sql/06_session_context.sql; do
             if [ -f "$script" ]; then
               echo "Executing $script..."
               snow sql -f "$script" --connection prod
             fi
           done
-          for script in sql/05_cortex_search.sql sql/06_seed_data.sql sql/07_session_context.sql; do
-            if [ -f "$script" ]; then
-              echo "Executing $script..."
-              snow sql -f "$script" --connection prod
-            fi
-          done
-          if [ -f "sql/08_ingestion_worker_task.sql" ]; then
-            echo "Executing sql/08_ingestion_worker_task.sql..."
-            snow sql -f sql/08_ingestion_worker_task.sql --connection prod
-          fi
 
       - name: Deployment summary
         if: success()
