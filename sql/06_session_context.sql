@@ -86,14 +86,27 @@ BEGIN
         LISTAGG(make || ' ' || model, ', ') WITHIN GROUP (ORDER BY component_category) AS component_str
         FROM components
     ),
+    search_filters AS (
+        SELECT
+            ANY_VALUE(dc.bike_model) AS bike_model_filter,
+            LISTAGG(DISTINCT f.value::VARCHAR, ', ') WITHIN GROUP (ORDER BY f.value::VARCHAR) AS component_model_filters
+        FROM MODELED.BIKE_COMPONENT_INSTANCES i
+        JOIN MODELED.COMPONENT_DOCUMENT_LINK l ON i.catalog_id = l.catalog_id
+        JOIN SEARCH.DOCUMENT_CHUNKS dc ON l.document_id = dc.document_id
+        JOIN LATERAL FLATTEN(input => dc.component_models) f
+        WHERE i.bike_id = :p_bike_id
+          AND dc.bike_model IS NOT NULL
+    ),
     preamble AS (
         SELECT 
             'User is working on their ' || b.display_name || 
             COALESCE(' (' || b.category || ' bike)', '') ||
             '. Components on this bike: ' || c.component_str ||
-            '. When answering questions, restrict searches to these component models when relevant using the component_models filter attribute. Use bike_model = ''' || b.display_name || 
-            ''' for frame-specific questions.' AS text
-        FROM bike b, component_json c
+            '. IMPORTANT - Use these exact Cortex Search filter values (copy exactly, do not modify):' ||
+            ' bike_model filter = "' || COALESCE(sf.bike_model_filter, '') || '"' ||
+            '; component_models filters (use @contains with these exact values): ' || COALESCE(sf.component_model_filters, '') ||
+            '. Never construct filter values yourself - only use the exact values listed above.' AS text
+        FROM bike b, component_json c, search_filters sf
     )
     SELECT OBJECT_CONSTRUCT(
         'bike', OBJECT_CONSTRUCT(

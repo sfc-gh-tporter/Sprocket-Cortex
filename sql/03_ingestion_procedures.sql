@@ -582,9 +582,18 @@ BEGIN
     UPDATE RAW.DOCUMENT_IMAGES di
     SET description = AI_COMPLETE(
         ''pixtral-large'',
-        ''You are a bicycle mechanic assistant. Describe this image from a '' || COALESCE(:v_make || '' '' || :v_model, ''bicycle'') || '' service manual. Focus on technical details like part names, assembly steps, bolt locations, tool sizes, torque specs, and measurements. Be concise but thorough. If it shows a diagram, describe all labeled parts.'',
+        ''You are a bicycle mechanic assistant analyzing an image from a '' || COALESCE(:v_make || '' '' || :v_model, ''bicycle'') || '' service manual.
+
+Describe what you see using this structure:
+- IMAGE TYPE: photo / exploded diagram / schematic / table / warning label
+- PARTS: list every labeled part, callout number, or component name visible
+- ASSEMBLY ORDER: if this is an exploded diagram, list parts in installation sequence (outermost to innermost, or numbered order)
+- SPECIFICATIONS: any torque values, dimensions, part numbers, thread specs, or measurements visible
+- PROCEDURE: any step numbers or assembly instructions shown
+
+Be specific with part names and numbers. Use the exact text shown in the image.'',
         TO_FILE(''@RAW.IMAGES_STAGE'', ''page'' || di.page_number || ''_img'' || di.image_index || ''.jpeg''),
-        {''max_tokens'': 500}
+        {''max_tokens'': 600}
     )
     WHERE document_id = :p_document_id AND description IS NULL;
     
@@ -600,26 +609,55 @@ BEGIN
     UPDATE RAW.DOCUMENT_REGISTRY SET progress_pct = 90, status_updated_at = CURRENT_TIMESTAMP()
     WHERE document_id = :p_document_id;
 
-    -- Insert text chunks (paragraph-level splitting)
+    -- Insert text chunks (paragraph-level splitting with section heading propagation)
     v_step_start := CURRENT_TIMESTAMP();
     INSERT INTO SEARCH.DOCUMENT_CHUNKS (
         document_id, content, section, section_type, page_number, chunk_type, source_file,
         component_category, document_type, component_catalog_ids, component_makes, component_models
     )
-    SELECT 
-        dp.document_id,
-        TRIM(para.value::VARCHAR) AS content,
-        REGEXP_SUBSTR(TRIM(para.value::VARCHAR), ''^#{1,3}\\s+(.+)$'', 1, 1, ''me'') AS section,
+    WITH paragraphs AS (
+        SELECT
+            dp.document_id,
+            dp.page_number,
+            TRIM(para.value::VARCHAR) AS para_text,
+            para.index AS para_idx
+        FROM RAW.DOCUMENT_PAGES dp,
+             LATERAL FLATTEN(input => SPLIT(dp.content, ''\n\n'')) para
+        WHERE dp.document_id = :p_document_id
+          AND LENGTH(TRIM(para.value::VARCHAR)) > 10
+          AND LENGTH(TRIM(para.value::VARCHAR)) < 3000
+    ),
+    with_headings AS (
+        SELECT
+            p.*,
+            LAST_VALUE(
+                CASE WHEN REGEXP_LIKE(para_text, ''^#{1,3}\\s+.+'')
+                     THEN REGEXP_SUBSTR(para_text, ''^#{1,3}\\s+(.+)'', 1, 1, ''e'')
+                END IGNORE NULLS
+            ) OVER (
+                PARTITION BY document_id, page_number
+                ORDER BY para_idx
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            ) AS current_section
+        FROM paragraphs p
+    )
+    SELECT
+        document_id,
+        CASE WHEN current_section IS NOT NULL
+             THEN current_section || CHR(10) || CHR(10) || para_text
+             ELSE para_text
+        END AS content,
+        current_section AS section,
         CASE
-            WHEN LOWER(REGEXP_SUBSTR(TRIM(para.value::VARCHAR), ''^#{1,3}\\s+(.+)$'', 1, 1, ''me'')) RLIKE ''.*( spec|torque|dimension|part number|hardware|geometry|clearance|pressure|travel|sag).*'' THEN ''specification''
-            WHEN LOWER(REGEXP_SUBSTR(TRIM(para.value::VARCHAR), ''^#{1,3}\\s+(.+)$'', 1, 1, ''me'')) RLIKE ''.*(assembly|disassembly|procedure|install|bleed|service|remov|replac|adjust|lubricate|setting).*'' THEN ''procedure''
-            WHEN LOWER(TRIM(para.value::VARCHAR)) RLIKE ''.*(warning|caution|danger|do not|never|must not).*'' THEN ''warning''
+            WHEN LOWER(COALESCE(current_section, '''')) RLIKE ''.*( spec|torque|dimension|part number|hardware|geometry|clearance|pressure|travel|sag).*'' THEN ''specification''
+            WHEN LOWER(COALESCE(current_section, '''')) RLIKE ''.*(assembly|disassembly|procedure|install|bleed|service|remov|replac|adjust|lubricate|setting).*'' THEN ''procedure''
+            WHEN LOWER(para_text) RLIKE ''.*(warning|caution|danger|do not|never|must not).*'' THEN ''warning''
             ELSE ''general''
         END AS section_type,
-        dp.page_number,
+        page_number,
         CASE
-            WHEN TRIM(para.value::VARCHAR) RLIKE ''.*\\|.+\\|.*'' THEN ''spec''
-            WHEN LOWER(TRIM(para.value::VARCHAR)) RLIKE ''.*(\\d+\\s*(nm|in-lbf|ft-lbf|in\\.lbf|ft\\.lbf)|torque|thread pitch|bolt size|wrench size|\\d+mm\\s*socket).*'' THEN ''spec''
+            WHEN para_text RLIKE ''.*\\|.+\\|.*'' THEN ''spec''
+            WHEN LOWER(para_text) RLIKE ''.*(\\d+\\s*(nm|in-lbf|ft-lbf|in\\.lbf|ft\\.lbf)|torque|thread pitch|bolt size|wrench size|\\d+mm\\s*socket).*'' THEN ''spec''
             ELSE ''text''
         END AS chunk_type,
         :v_source_file,
@@ -628,10 +666,9 @@ BEGIN
         ARRAY_CONSTRUCT(:v_catalog_id),
         ARRAY_CONSTRUCT(:v_make),
         ARRAY_CONSTRUCT(:v_model)
-    FROM RAW.DOCUMENT_PAGES dp,
-         LATERAL FLATTEN(input => SPLIT(dp.content, ''\n\n'')) para
-    WHERE dp.document_id = :p_document_id
-      AND LENGTH(TRIM(para.value::VARCHAR)) > 30;
+    FROM with_headings
+    WHERE NOT REGEXP_LIKE(para_text, ''^#{1,3}\\s+.+'')
+      AND LENGTH(TRIM(para_text)) > 75;
     
     SELECT COUNT(*) INTO :v_text_chunks FROM SEARCH.DOCUMENT_CHUNKS 
     WHERE document_id = :p_document_id AND chunk_type = ''text'';

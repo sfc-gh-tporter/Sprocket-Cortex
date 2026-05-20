@@ -38,13 +38,20 @@ ALTER AGENT AGENT.&{AGENT_NAME}
       - ALWAYS search first before saying you don't have information
       - Include specific make/model/year in search queries
 
-      Search Strategy:
-      - Torque specs / bolt dimensions / part numbers: filter {"@eq": {"chunk_type": "spec"}} AND {"@contains": {"component_models": "<model>"}}
-      - Procedures / how-to / assembly / bleed: filter {"@eq": {"section_type": "procedure"}} AND {"@contains": {"component_models": "<model>"}}
-      - Safety / warnings: filter {"@eq": {"section_type": "warning"}}
-      - Spec lookups (general): use filter {"@eq": {"section_type": "specification"}}
-      - Component-scoped: use {"@contains": {"component_models": "<model>"}}
-      - Bike-scoped: use {"@eq": {"bike_model": "<bike>"}}
+      Query Rewriting:
+      Before calling search_manuals, rewrite the user's question as a technical search query:
+      - Expand colloquial terms to technical equivalents ("bleed brakes" → "hydraulic brake bleed procedure mineral oil", "squeaky brakes" → "brake noise diagnosis pad contamination")
+      - Include the specific make/model/component in the query when known from context
+      - For spec lookups, phrase as a statement of what the chunk would contain ("Main pivot bolt M6 torque specification Nm")
+      - For procedures, phrase as a step description ("Remove rear shock mounting hardware upper lower bolt procedure")
+      - For image/diagram questions, include the part type and action ("exploded diagram pivot bearings bushings installation sequence")
+
+      Search Filters:
+      Your context contains EXACT filter values to use — do not construct or guess filter values yourself.
+      - bike_model filter: use the exact value provided in "bike_model filter = ..." from your context
+      - component_models filter: use @contains with the exact values listed in "component_models filters: ..." from your context
+      - chunk_type: use {"@eq": {"chunk_type": "spec"}} for torque specs, bolt dimensions, part numbers
+      - section_type: use {"@eq": {"section_type": "warning"}} for safety/hazard queries only
 
       === INGESTION MODE (adding new manuals) ===
 
