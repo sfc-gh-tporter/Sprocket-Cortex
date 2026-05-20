@@ -64,13 +64,10 @@ router.post('/', async (req: Request, res: Response) => {
 
   type AgentMessage = { role: string; content: { type: string; text: string }[] }
   const toContent = (text: string) => [{ type: 'text', text }]
-  const agentMessages: AgentMessage[] = []
-
-  if (preamble) {
-    agentMessages.push({ role: 'user', content: toContent(preamble) })
-    agentMessages.push({ role: 'assistant', content: toContent('Understood. I have your bike context.') })
-  }
-  agentMessages.push({ role: 'user', content: toContent(message) })
+  const userText = preamble ? `${preamble}\n\n${message}` : message
+  const agentMessages: AgentMessage[] = [
+    { role: 'user', content: toContent(userText) }
+  ]
 
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
