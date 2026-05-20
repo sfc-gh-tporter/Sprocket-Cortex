@@ -21,8 +21,8 @@ CREATE OR ALTER TABLE RAW.DOCUMENT_REGISTRY (
     status_updated_at   TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
     progress_pct        INT DEFAULT 0,
     classification      VARIANT,
-    proposed_catalog_id VARCHAR,
     error_message       VARCHAR,
+    proposed_catalog_id VARCHAR,
     PRIMARY KEY (document_id)
 );
 
