@@ -22,8 +22,8 @@ RETURNS VARIANT
 LANGUAGE PYTHON
 RUNTIME_VERSION = '3.11'
 PACKAGES = ('snowflake-snowpark-python')
-EXECUTE AS OWNER
 HANDLER = 'save_images'
+EXECUTE AS OWNER
 AS
 $$
 import base64
