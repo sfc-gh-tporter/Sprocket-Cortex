@@ -10,18 +10,19 @@ USE WAREHOUSE SPROCKET_WH;
 ----------------------------------------------------------------------
 
 CREATE OR ALTER TABLE RAW.DOCUMENT_REGISTRY (
-    document_id     VARCHAR DEFAULT UUID_STRING(),
-    source_file     VARCHAR NOT NULL,
-    file_path       VARCHAR,
-    upload_date     TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
-    status          VARCHAR DEFAULT 'UPLOADED',
-    page_count      INT,
-    file_size_bytes INT,
-    metadata        VARIANT,
-    status_updated_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
-    progress_pct    INT DEFAULT 0,    
-    classification  VARIANT,
-    error_message   VARCHAR,
+    document_id         VARCHAR DEFAULT UUID_STRING(),
+    source_file         VARCHAR NOT NULL,
+    file_path           VARCHAR,
+    upload_date         TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    status              VARCHAR DEFAULT 'UPLOADED',
+    page_count          INT,
+    file_size_bytes     INT,
+    metadata            VARIANT,
+    status_updated_at   TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    progress_pct        INT DEFAULT 0,
+    classification      VARIANT,
+    error_message       VARCHAR,
+    proposed_catalog_id VARCHAR,
     PRIMARY KEY (document_id)
 );
 
@@ -96,6 +97,17 @@ CREATE OR ALTER TABLE MODELED.COMPONENT_DOCUMENT_LINK (
     created_at      TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
     PRIMARY KEY (link_id),
     UNIQUE (catalog_id, document_id)
+);
+
+----------------------------------------------------------------------
+-- PIPELINE SCHEMA – ingestion queue
+----------------------------------------------------------------------
+
+CREATE OR ALTER TABLE PIPELINE.INGEST_QUEUE (
+    queue_id        VARCHAR DEFAULT UUID_STRING(),
+    document_id     VARCHAR NOT NULL,
+    queued_at       TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    PRIMARY KEY (queue_id)
 );
 
 ----------------------------------------------------------------------

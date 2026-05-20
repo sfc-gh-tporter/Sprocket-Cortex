@@ -8,6 +8,74 @@ USE ROLE SPROCKET_DEPLOYER;
 USE WAREHOUSE SPROCKET_WH;
 
 --------------------------------------------------------------------
+-- SAVE_DOC_IMAGES_TO_STAGE: Save base64 images to stage as JPEG files
+--------------------------------------------------------------------
+-- Reads image_base64 from RAW.DOCUMENT_IMAGES for a given document
+-- and writes each image as a JPEG file to @RAW.IMAGES_STAGE using
+-- the naming pattern: page<N>_img<index>.jpeg (with optional prefix)
+
+CREATE OR REPLACE PROCEDURE PIPELINE.SAVE_DOC_IMAGES_TO_STAGE(
+    p_document_id VARCHAR,
+    p_prefix VARCHAR
+)
+RETURNS VARIANT
+LANGUAGE PYTHON
+RUNTIME_VERSION = '3.11'
+PACKAGES = ('snowflake-snowpark-python')
+HANDLER = 'save_images'
+EXECUTE AS OWNER
+AS
+$$
+import base64
+import io
+
+def save_images(session, document_id: str, prefix: str) -> dict:
+    rows = session.sql(
+        """
+        SELECT page_number, image_index, image_base64
+        FROM RAW.DOCUMENT_IMAGES
+        WHERE document_id = ? AND image_base64 IS NOT NULL
+        ORDER BY page_number, image_index
+        """,
+        params=[document_id]
+    ).collect()
+
+    saved = 0
+    errors = []
+
+    for row in rows:
+        page = row['PAGE_NUMBER']
+        idx = row['IMAGE_INDEX']
+        b64 = row['IMAGE_BASE64']
+
+        if not b64:
+            continue
+
+        # Strip data URI prefix if present (e.g. "data:image/jpeg;base64,...")
+        if ',' in b64:
+            b64 = b64.split(',', 1)[1]
+
+        try:
+            img_bytes = base64.b64decode(b64)
+            filename = f"page{page}_img{idx}.jpeg"
+            stage_path = f"@RAW.IMAGES_STAGE/{filename}"
+
+            file_stream = io.BytesIO(img_bytes)
+            session.file.put_stream(
+                file_stream,
+                stage_path,
+                auto_compress=False,
+                overwrite=True,
+                source_compression='NONE'
+            )
+            saved += 1
+        except Exception as e:
+            errors.append(f"page{page}_img{idx}: {str(e)}")
+
+    return {"saved": saved, "errors": errors, "document_id": document_id}
+$$;
+
+--------------------------------------------------------------------
 -- INGEST_START: Checkpoint 1 - Register & Parse Preview
 --------------------------------------------------------------------
 -- Registers document, parses first 3 pages, extracts title guess
