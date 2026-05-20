@@ -18,6 +18,10 @@ CREATE OR ALTER TABLE RAW.DOCUMENT_REGISTRY (
     page_count      INT,
     file_size_bytes INT,
     metadata        VARIANT,
+    status_updated_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    progress_pct    INT DEFAULT 0,    
+    classification  VARIANT,
+    error_message   VARCHAR,
     PRIMARY KEY (document_id)
 );
 
